@@ -1,0 +1,65 @@
+.DS_Store
+/docs/mock-data
+/docs/phases
+/docs/requirements
+.env
+
+# Backend build output and dependencies
+/backend/dist
+/backend/node_modules
+/backend/build
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Backend logs
+/backend/logs
+*.log
+*.log.*
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Backend test output
+/backend/coverage
+/backend/.nyc_output
+
+# IDEs and editors
+/.idea
+/.project
+/.classpath
+/.c9/
+*.launch
+/.settings/
+*.sublime-workspace
+
+# VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Environment files
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+/backend/.env
+/backend/.env.development.local
+/backend/.env.test.local
+/backend/.env.production.local
+/backend/.env.local
+
+# Backend temporary and runtime files
+/backend/.temp
+/backend/.tmp
+/backend/pids
+/backend/*.pid
+/backend/*.seed
+/backend/*.pid.lock
+
+# Node diagnostic reports
+report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
