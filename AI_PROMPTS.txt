@@ -1,0 +1,36 @@
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-09
+AGENT: ChatGPT Work
+
+------------------------------------------------
+
+PROMPT: Please register the schemas in database.module.ts and the database in app.module.ts.
+
+------------------------------------------------
+
+RESPONSE: Registered the MongoDB connection and all 28 standalone models. AppModule now loads the database config and imports DatabaseModule; that module connects through MONGODB_URI, registers the models with forFeature, and exports MongooseModule for other modules.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-09
+AGENT: ChatGPT Work
+
+------------------------------------------------
+
+PROMPT: Please go through my database schemas and make sure that the names of collections, fields, etc. are standardised (within our application, and with other applications). Do not change anything other than the names.
+
+------------------------------------------------
+
+RESPONSE: Standardized schema naming across the application:
+
+- ObjectId references now use ...Id, and reference arrays use ...Ids.
+- Image arrays consistently use imageUrls.
+- Corrected the CENCELLED enum member name to CANCELLED; its stored value remains cancelled.
+- Kept the existing collection names, which already use plural snake_case.
+
+Only schema files were edited. No tests were run. Because field names are persisted in MongoDB, existing documents will need a names-only data migration before the renamed fields are used with existing data.
+
+================================================
