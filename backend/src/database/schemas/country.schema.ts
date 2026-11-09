@@ -4,7 +4,7 @@ import { HydratedDocument } from 'mongoose';
 @Schema({
     collection: 'countries',
     timestamps: true,
-    strict: true,
+    strict: 'throw',
     minimize: true
 })
 export class Country {
@@ -12,7 +12,9 @@ export class Country {
         type: String,
         unique: true,
         required: true,
-        trim: true
+        trim: true,
+        minlength: 1,
+        maxlength: 100
     })
     name: string;
 
@@ -22,6 +24,9 @@ export class Country {
         unique: true,
         trim: true,
         lowercase: true,
+        minlength: 2,
+        maxlength: 2,
+        match: /^[a-z]{2}$/,
     })
     code: string;
 
@@ -31,15 +36,18 @@ export class Country {
         unique: true,
         trim: true,
         lowercase: true,
+        minlength: 3,
+        maxlength: 3,
+        match: /^[a-z]{3}$/,
     })
     currency: string;
 
     @Prop({
-        type: [String]
+        type: [String],
+        default: []
     })
     imageUrls: string[];
 }
 
 export type CountryDocument = HydratedDocument<Country>;
-
 export const CountrySchema = SchemaFactory.createForClass(Country);

@@ -5,7 +5,7 @@ import { Country } from './country.schema.js';
 @Schema({
     collection: 'cities',
     timestamps: true,
-    strict: true,
+    strict: 'throw',
     minimize: true
 })
 export class City {
@@ -13,23 +13,26 @@ export class City {
         type: String,
         unique: true,
         required: true,
-        trim: true
+        trim: true,
+        minlength: 1,
+        maxlength: 100
     })
     name: string;
 
     @Prop({
         type: Types.ObjectId,
         ref: Country.name,
-        required: true
+        required: true,
+        index: true
     })
-    country: Types.ObjectId;
+    countryId: Types.ObjectId;
 
     @Prop({
-        type: [String]
+        type: [String],
+        default: []
     })
     imageUrls: string[];
 }
 
 export type CityDocument = HydratedDocument<City>;
-
 export const CitySchema = SchemaFactory.createForClass(City);

@@ -5,7 +5,7 @@ import { User } from './user.schema.js';
 @Schema({
     collection: 'password_reset_tokens',
     timestamps: true,
-    strict: true,
+    strict: 'throw',
     minimize: true
 })
 export class PasswordResetToken {
@@ -13,14 +13,18 @@ export class PasswordResetToken {
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
-        required: true
+        required: true,
+        index: true
     })
-    user: Types.ObjectId;
+    userId: Types.ObjectId;
 
     @Prop({
         type: String,
         required: true,
-        unique: true
+        unique: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 255
     })
     tokenHash: string;
 
@@ -32,7 +36,6 @@ export class PasswordResetToken {
 }
 
 export type PasswordResetTokenDocument = HydratedDocument<PasswordResetToken>;
-
 export const PasswordResetTokenSchema = SchemaFactory.createForClass(PasswordResetToken);
 
 PasswordResetTokenSchema.index(

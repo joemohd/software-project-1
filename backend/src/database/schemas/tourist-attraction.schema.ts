@@ -5,26 +5,33 @@ import { City } from './city.schema.js';
 @Schema({
     collection: 'tourist_attractions',
     timestamps: true,
-    strict: true,
+    strict: 'throw',
     minimize: true
 })
 export class TouristAttraction {
     @Prop({
         type: String,
         required: true,
-        trim: true
+        trim: true,
+        minlength: 1,
+        maxlength: 150
     })
     name: string;
 
     @Prop({
         type: Types.ObjectId,
         ref: City.name,
-        required: true
+        required: true,
+        index: true
     })
-    city: Types.ObjectId;
+    cityId: Types.ObjectId;
 
     @Prop({
-        type: [String]
+        type: [String],
+        default: []
     })
     imageUrls: string[];
 }
+
+export type TouristAttractionDocument = HydratedDocument<TouristAttraction>;
+export const TouristAttractionSchema = SchemaFactory.createForClass(TouristAttraction);

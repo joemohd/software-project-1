@@ -18,14 +18,16 @@ export enum UserRole {
 @Schema({
     collection: 'users',
     timestamps: true,
-    strict: true,
+    strict: 'throw',
     minimize: true
 })
 export class User {
     @Prop({
         type: String,
         required: true,
-        trim: true
+        trim: true,
+        minlength: 1,
+        maxlength: 100
     })
     fullName: string;
 
@@ -43,7 +45,7 @@ export class User {
     passwordHash: string;
     // hashed by the service using argon2
 
-    @Prop({ type: String })
+    @Prop({ type: String, trim: true, match: /^\+[1-9]\d{1,14}$/ })
     phoneNumber: string;
     // transoformation of phone numbers into a format ITU-T E.164 standard should be handled by the backend server not the database
 
@@ -72,16 +74,18 @@ export class User {
     @Prop({
         type: Types.ObjectId,
         ref: Country.name,
-        required: true
+        required: true,
+        index: true
     })
-    countryOfOrigin: Types.ObjectId;
+    countryOfOriginId: Types.ObjectId;
     // enforce referential integrity
 
     @Prop({
         type: Number,
         default: 0,
         min: 0,
-        max: 5
+        max: 5,
+        validate: Number.isInteger
     })
     loginAttempts: number;
 
@@ -107,23 +111,24 @@ export class User {
     isVerified: boolean;
 }
 
-export type UserDocument = HydratedDocument<User>;
-
-export const UserSchema = SchemaFactory.createForClass(User);
-
 @Schema({
     collection: 'moderators',
     timestamps: true,
-    strict: true,
-    minimize: true
+    strict: 'throw',
+    minimize: true,
+    _id: true
 })
 export class Moderator extends User {
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
-        required: true
+        required: true,
+        index: true
     })
     adminId: Types.ObjectId;
 }
 
+export type ModeratorDocument = HydratedDocument<Moderator>;
+export type UserDocument = HydratedDocument<User>;
+export const UserSchema = SchemaFactory.createForClass(User);
 export const ModeratorSchema = SchemaFactory.createForClass(Moderator);
