@@ -1,0 +1,25 @@
+// USER {user_id, user_type, full_name, email_address, phone_number, preferred_currency, password_hash, login_attempts_count, activity_status, verification_status, reset_password_token},
+
+// MODERATOR {user_id, admin_id, role},
+
+TAG {tag_id, tag_name}
+
+BLOG_POST {blog_post_id, title, body, tags[], images_url[], status, itinerary_id},
+
+COMMENT {comment_id, user_id, post_id, comment_reply_id, timestamp comment_time, text},
+
+POST_LIKES {user_id, post_id, like_timestamp},
+
+PROVIDER {provider_id, name, logo_url, primary_colour},
+
+AIRLINE {provider_id},
+
+HOTEL {provider_id},
+
+// COUNTRY {country_id, name, code, currency},
+
+// CITY {city_id, name, country_id},
+
+AIRPORT {airport_id, iata_code, name, city_id},
+
+FLIGHT {flight_id, airline_id, flight_number, departure_airport_id, departure_timestamp, arrival_airport_id, arrival_timestamp}
