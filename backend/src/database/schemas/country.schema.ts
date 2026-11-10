@@ -30,18 +30,42 @@ export class Country {
         uppercase: true,
         minlength: 2,
         maxlength: 2,
-        match: /^[a-z]{2}$/,
+        match: /^[A-Z]{2}$/,
     })
     code: string;
 
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
-        type: Types.ObjectId,
+        type: [Types.ObjectId],
         ref: Currency.name,
-        required: true,
+        default: [],
+        validate: {
+            validator: (currencyIds: Types.ObjectId[]) =>
+                Array.isArray(currencyIds) &&
+                new Set(currencyIds.map((id) => id.toString())).size === currencyIds.length,
+            message: 'Country currency references must be unique.'
+        },
         index: true
     })
-    currencyId: Types.ObjectId;
+    currencyIds: Types.ObjectId[];
+
+    @Prop({
+        type: [String],
+        default: [],
+        validate: {
+            validator: (timeZones: string[]) =>
+                Array.isArray(timeZones) &&
+                timeZones.every((timeZone) => {
+                    try {
+                        new Intl.DateTimeFormat('en', { timeZone });
+                        return true;
+                    } catch {
+                        return false;
+                    }
+                }),
+            message: 'Country time zones must be valid IANA identifiers.'
+        }
+    })
+    timeZones: string[];
 
     // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
 

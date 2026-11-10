@@ -98,14 +98,16 @@ export class CheckingPolicies {
     checkOutTime: number;
 }
 
-// TODO: Remodel the inheritance so that the unique constraint on the id is enforced across hotels and airlines
 @Schema({
     collection: 'providers',
     timestamps: true,
     strict: 'throw',
-    minimize: true
+    minimize: true,
+    discriminatorKey: 'providerType'
 })
 export class Provider {
+    @Prop({ type: String, enum: ['airline', 'hotel'], required: true })
+    providerType: 'airline' | 'hotel';
     // TODO: Perform referential integrity checks in the backend application
 
     // TODO: Make sure that the user is a moderator in the backend application
@@ -132,8 +134,6 @@ export class Provider {
         maxlength: 2000
     })
     description?: string;
-
-    // TODO: Should allow for fractional ratings
 
     // TODO: Auto-calculated upon new reviews
     @Prop({
@@ -175,15 +175,25 @@ export class Provider {
     cancellationPolicies: CancellationPolicy[];
 }
 
-// TODO: Add IATA codes
 @Schema({
-    collection: 'airlines',
     timestamps: true,
     strict: 'throw',
     minimize: true,
     _id: true
 })
 export class Airline extends Provider {
+    @Prop({
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+        minlength: 2,
+        maxlength: 3,
+        match: /^(?:[A-Z0-9]{2}|[A-Z]{3})$/,
+        unique: true
+    })
+    iataCode: string;
+
     @Prop({
         type: BagPolicy,
         required: true
@@ -192,7 +202,6 @@ export class Airline extends Provider {
 }
 
 @Schema({
-    collection: 'hotels',
     timestamps: true,
     strict: 'throw',
     minimize: true,
@@ -397,13 +406,18 @@ export class Room {
     })
     pricePerNight: number;
 
-    // TODO: Reject overlapping blocked date ranges
     @Prop({
         type: [BlockedDateRange],
         default: [],
         validate: {
-            validator: (ranges: BlockedDateRange[]) => ranges.every((range) => range.endDate > range.startDate),
-            message: 'Blocked date end must be on or after its start'
+            validator: (ranges: BlockedDateRange[]) =>
+                Array.isArray(ranges) && ranges.every((range, index) =>
+                    range.endDate > range.startDate &&
+                    ranges.slice(0, index).every((otherRange) =>
+                        range.startDate >= otherRange.endDate || otherRange.startDate >= range.endDate
+                    )
+                ),
+            message: 'Blocked date ranges must have a positive duration and must not overlap'
         }
     })
     blockedDates: BlockedDateRange[];
