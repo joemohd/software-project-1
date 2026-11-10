@@ -2,8 +2,9 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { City } from './city.schema.js';
 import { User } from './user.schema.js';
-import { Country } from './country.schema.js';
 import { Room } from './provider.schema.js';
+import { Currency } from './currency.schema.js';
+import { Cabin } from './flight.schema.js';
 
 @Schema({
     collection: 'activity_categories',
@@ -16,24 +17,19 @@ export class ActivityCategory {
         type: String,
         required: true,
         trim: true,
+        lowercase: true,
         minlength: 1,
         maxlength: 80
     })
     name: string;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
         required: true
     })
     userId: Types.ObjectId;
-}
-
-export enum TransportMode {
-    BUS = 'bus',
-    TRAIN = 'train',
-    FLIGHT = 'flight',
-    CAR = 'car'
 }
 
 @Schema({ _id: false })
@@ -54,99 +50,13 @@ export class Expense {
     })
     description: string;
 
+    // TODO: Model monetary amounts as integers representing the smallest currency unit (USD)
     @Prop({
         type: Number,
         min: 0,
-        validate: Number.isFinite
+        validate: Number.isSafeInteger
     })
     cost: number;
-}
-
-@Schema({
-    collection: 'activities',
-    timestamps: true,
-    strict: 'throw',
-    minimize: true,
-    _id: true
-})
-export class Activity extends Expense {
-    @Prop({ type: Date })
-    time: Date; //optional
-
-    @Prop({
-        type: [String],
-        default: []
-    })
-    imageUrls: string[]; //optional
-
-    @Prop({
-        type: Types.ObjectId,
-        ref: ActivityCategory.name,
-        required: true,
-        index: true
-    })
-    categoryId: Types.ObjectId;
-
-    @Prop({
-        type: Types.ObjectId,
-        ref: City.name,
-        required: true,
-        index: true
-    })
-    cityId: Types.ObjectId;
-}
-
-@Schema({
-    collection: 'transports',
-    timestamps: true,
-    strict: 'throw',
-    minimize: true,
-    _id: true
-})
-export class Transport extends Expense {
-    @Prop({ type: Date })
-    time: Date;
-
-    @Prop({
-        type: String,
-        enum: [...Object.values(TransportMode), 'other'],
-        required: true,
-        trim: true
-    })
-    mode: TransportMode | 'other'; // allows for other in the forms (string)
-
-    @Prop({
-        type: Types.ObjectId,
-        ref: City.name,
-        required: true,
-        index: true
-    })
-    fromCityId: Types.ObjectId;
-
-    @Prop({
-        type: Types.ObjectId,
-        ref: City.name,
-        required: true,
-        index: true
-    })
-    toCityId: Types.ObjectId;
-}
-
-@Schema({
-    collection: 'flight_transports',
-    timestamps: true,
-    strict: 'throw',
-    minimize: true,
-    _id: true
-})
-export class FlightTransport extends Transport {
-    @Prop({
-        type: Types.ObjectId,
-        ref: 'FlightBooking',
-        required: true,
-        index: true
-    })
-    flightBookingId: Types.ObjectId;
 }
 
 export enum BookingStatus {
@@ -168,6 +78,7 @@ export enum PaymentMethod {
     BANK_TRANSFER = 'bank transfer'
 }
 
+// TODO: Use the Checkout Sessions API instead of the Payment Intents API (also check against the functional requirements)
 @Schema({ _id: false })
 export class Payment {
     @Prop({
@@ -180,21 +91,25 @@ export class Payment {
     })
     stripePaymentIntentId: string;
 
+    // TODO: Model monetary amounts as integers representing the smallest currency unit(USD)
     @Prop({
         type: Number,
         required: true,
         min: 0,
-        validate: Number.isFinite
+        validate: Number.isSafeInteger
     })
     amount: number;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
-        ref: Country.name,
-        required: true
+        ref: Currency.name,
+        required: true,
+        index: true
     })
-    currencyCountryId: Types.ObjectId;
+    currencyId: Types.ObjectId;
 
+    // TODO: Make the enum compatible with Stripe's payment life cycle
     @Prop({
         type: String,
         enum: Object.values(PaymentStatus),
@@ -209,13 +124,15 @@ export class Payment {
     })
     method: PaymentMethod;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: 'Refund'
     })
-    refundId: Types.ObjectId; //optional
+    refundId: Types.ObjectId;
 }
 
+// TODO: Check again after changing to the Stripe Checkout Sessions API
 @Schema({
     collection: 'refunds',
     timestamps: true,
@@ -233,11 +150,12 @@ export class Refund {
     })
     stripeRefundId: string;
 
+    // TODO: Model monetary amounts as integers representing the smallest currency unit (USD)
     @Prop({
         type: Number,
         required: true,
         min: 0,
-        validate: Number.isFinite
+        validate: Number.isSafeInteger
     })
     amount: number;
 
@@ -260,6 +178,7 @@ export class Refund {
 
 @Schema({ _id: false })
 export class Booking extends Expense {
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
@@ -272,10 +191,11 @@ export class Booking extends Expense {
         type: Number,
         min: 1,
         max: 5,
-        validate: Number.isFinite
+        validate: Number.isInteger
     })
     rating: number;
 
+    // TODO: Enforce the state-transition description
     @Prop({
         type: String,
         enum: Object.values(BookingStatus),
@@ -283,6 +203,7 @@ export class Booking extends Expense {
     })
     status: BookingStatus;
 
+    // TODO: Get back to it after changing the Stripe API
     @Prop({
         type: Payment,
         required: true
@@ -292,6 +213,7 @@ export class Booking extends Expense {
 
 @Schema({ _id: false })
 export class HotelBookingRoom {
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Room.name,
@@ -305,7 +227,7 @@ export class HotelBookingRoom {
         default: [],
         validate: {
             validator: (ages: number[]) => ages.every((age) => Number.isInteger(age) && age >= 0),
-            message: 'Guest ages must be whole numbers greater than 0'
+            message: 'Guest ages must be non-negative integers'
         }
     })
     guestAges: number[];
@@ -319,6 +241,7 @@ export class HotelBookingRoom {
     _id: true
 })
 export class HotelBooking extends Booking {
+    // TODO: Make it is a future date
     @Prop({
         type: Date,
         required: true
@@ -333,6 +256,7 @@ export class HotelBooking extends Booking {
     })
     nightsCount: number;
 
+    // TODO: Prevent ruplicate roomId entries in the same booking
     @Prop({
         type: [HotelBookingRoom],
         required: true,
@@ -354,8 +278,10 @@ export class FlightPassenger {
     })
     count: number;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
+        ref: Cabin.name,
         required: true
     })
     cabinId: Types.ObjectId;
@@ -376,17 +302,120 @@ export class FlightBooking extends Booking {
     passenger: FlightPassenger;
 }
 
+@Schema({
+    collection: 'activities',
+    timestamps: true,
+    strict: 'throw',
+    minimize: true,
+    _id: true
+})
+export class Activity extends Expense {
+    @Prop({ type: Date })
+    time: Date; //optional
+
+    // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
+
+    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
+    @Prop({
+        type: [String],
+        default: [],
+        validate: [
+            {
+                validator: (value: string[]) => value.length <= 5,
+                message: 'An expense cannot have more than 5 images.'
+            },
+            {
+                validator: (value: string[]) =>
+                    value.every(url => {
+                        try {
+                            const parsed = new URL(url);
+                            return ['http:', 'https:'].includes(parsed.protocol);
+                        } catch {
+                            return false;
+                        }
+                    }),
+                message: 'Invalid image URL.'
+            },
+            {
+                validator: (value: string[]) =>
+                    new Set(value).size === value.length,
+                message: 'Duplicate image URLs are not allowed.'
+            }
+        ]
+    })
+    imageUrls: string[];
+
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: ActivityCategory.name,
+        required: true,
+        index: true
+    })
+    categoryId: Types.ObjectId;
+
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: City.name,
+        required: true,
+        index: true
+    })
+    cityId: Types.ObjectId;
+}
+
+@Schema({
+    collection: 'transports',
+    timestamps: true,
+    strict: 'throw',
+    minimize: true,
+    _id: true
+})
+export class Transport extends Expense {
+    @Prop({ type: Date })
+    time: Date;
+
+    @Prop({
+        type: String,
+        required: true,
+        trim: true
+    })
+    mode:  string;
+
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: City.name,
+        required: true,
+        index: true
+    })
+    fromCityId: Types.ObjectId;
+
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: City.name,
+        required: true,
+        index: true
+    })
+    toCityId: Types.ObjectId;
+
+    @Prop({
+        type: Types.ObjectId,
+        ref: FlightBooking.name
+    })
+    flightBookingId?: Types.ObjectId;
+}
+
 export type ActivityCategoryDocument = HydratedDocument<ActivityCategory>;
 export type ActivityDocument = HydratedDocument<Activity>;
 export type TransportDocument = HydratedDocument<Transport>;
-export type FlightTransportDocument = HydratedDocument<FlightTransport>;
 export type RefundDocument = HydratedDocument<Refund>;
 export type HotelBookingDocument = HydratedDocument<HotelBooking>;
 export type FlightBookingDocument = HydratedDocument<FlightBooking>;
 export const ActivityCategorySchema = SchemaFactory.createForClass(ActivityCategory);
 export const ActivitySchema = SchemaFactory.createForClass(Activity);
 export const TransportSchema = SchemaFactory.createForClass(Transport);
-export const FlightTransportSchema = SchemaFactory.createForClass(FlightTransport);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 export const RefundSchema = SchemaFactory.createForClass(Refund);
 export const BookingSchema = SchemaFactory.createForClass(Booking);

@@ -3,15 +3,18 @@ import { HydratedDocument, Types } from 'mongoose';
 import { Airport } from './airport.schema.js';
 import { Airline } from './provider.schema.js';
 
-@Schema()
+@Schema({ _id: false })
 export class Cabin {
     @Prop({
         type: String,
         required: true,
-        trim: true
+        trim: true,
+        minlength: 1,
+        maxlength: 50
     })
     name: string;
 
+    // TODO: Unit should be kilograms
     @Prop({
         type: Number,
         required: true,
@@ -28,17 +31,19 @@ export class Cabin {
     })
     seatCount: number;
 
+    // TODO: Model monetary amounts as integers representing the smallest currency unit (USD)
     @Prop({
         type: Number,
         required: true,
         min: 0,
-        validate: Number.isFinite
+        validate: Number.isSafeInteger
     })
     seatPrice: number;
 }
 
 @Schema({ _id: false })
 export class FlightStop {
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Airport.name,
@@ -60,6 +65,7 @@ export class FlightStop {
     minimize: true
 })
 export class Flight {
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Airline.name,
@@ -67,13 +73,13 @@ export class Flight {
     })
     airlineId: Types.ObjectId;
 
+    // IATA Standard flight numbers
     @Prop({
-        type: Number,
+        type: String,
         required: true,
-        min: 1,
-        validate: Number.isInteger
+        match: /^\d{1,4}$/
     })
-    number: number;
+    number: string;
 
     @Prop({
         type: FlightStop,
@@ -97,6 +103,7 @@ export class Flight {
     })
     cabins: Cabin[];
 
+    // TODO: Make sure that Cabin.freeBagWeight is always smaller than maxBagWeight
     @Prop({
         type: Number,
         required: true,
@@ -105,22 +112,33 @@ export class Flight {
     })
     maxBagWeight: number;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Flight.name
     })
     roundTripFlightId: Types.ObjectId;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: [Types.ObjectId],
         ref: Flight.name,
-        default: []
+        default: [],
+        validate: {
+            validator: (ids: Types.ObjectId[]) => new Set(ids.map(id => id.toString())).size === ids.length,
+            message: 'Duplicate connecting flights are not allowed.'
+        }
     })
     connectingFlightIds: Types.ObjectId[];
 }
 
 export type FlightDocument = HydratedDocument<Flight>;
 export const FlightSchema = SchemaFactory.createForClass(Flight);
+
+FlightSchema.index(
+    { airlineId: 1, number: 1 },
+    { unique: true }
+);
 
 FlightSchema.pre('validate', function () {
     if (this.departure?.timestamp && this.arrival?.timestamp && this.departure.timestamp >= this.arrival.timestamp) {
@@ -141,6 +159,20 @@ FlightSchema.pre('validate', function () {
         this.invalidate(
             'connectingFlightIds',
             'A flight cannot connect to itself'
+        );
+    }
+
+    if (this.departure?.timestamp && this.arrival?.timestamp && this.departure.timestamp >= this.arrival.timestamp) {
+        this.invalidate(
+            'arrival.timestamp',
+            'Arrival must be after departure'
+        );
+    }
+
+    if (this.cabins?.some(cabin => cabin.freeBagWeight > this.maxBagWeight)) {
+        this.invalidate(
+            'cabins',
+            'Cabin free baggage allowance cannot exceed maximum baggage weight.'
         );
     }
 });
