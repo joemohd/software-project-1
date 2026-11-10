@@ -32,8 +32,10 @@ export class ActivityCategory {
     userId: Types.ObjectId;
 }
 
-@Schema({ _id: false })
+@Schema({ collection: 'expenses', timestamps: true, strict: 'throw', minimize: true, discriminatorKey: 'expenseType' })
 export class Expense {
+    @Prop({ type: String, enum: ['activity', 'transport', 'booking'], required: true })
+    expenseType: 'activity' | 'transport' | 'booking';
     @Prop({
         type: String,
         required: true,
@@ -176,8 +178,10 @@ export class Refund {
     reason: string;
 }
 
-@Schema({ _id: false })
+@Schema({ _id: false, discriminatorKey: 'bookingType' })
 export class Booking extends Expense {
+    @Prop({ type: String, enum: ['hotel', 'flight'], required: true })
+    bookingType: 'hotel' | 'flight';
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
@@ -234,7 +238,6 @@ export class HotelBookingRoom {
 }
 
 @Schema({
-    collection: 'hotel_bookings',
     timestamps: true,
     strict: 'throw',
     minimize: true,
@@ -256,13 +259,15 @@ export class HotelBooking extends Booking {
     })
     nightsCount: number;
 
-    // TODO: Prevent ruplicate roomId entries in the same booking
     @Prop({
         type: [HotelBookingRoom],
         required: true,
         validate: {
-            validator: (rooms: HotelBookingRoom[]) => Array.isArray(rooms) && rooms.length > 0,
-            message: 'At least one room is required'
+            validator: (rooms: HotelBookingRoom[]) =>
+                Array.isArray(rooms) &&
+                rooms.length > 0 &&
+                new Set(rooms.map((room) => room.roomId?.toString())).size === rooms.length,
+            message: 'At least one room is required and room IDs must be unique'
         }
     })
     rooms: HotelBookingRoom[];
@@ -288,7 +293,6 @@ export class FlightPassenger {
 }
 
 @Schema({
-    collection: 'flight_bookings',
     timestamps: true,
     strict: 'throw',
     minimize: true,
@@ -303,7 +307,6 @@ export class FlightBooking extends Booking {
 }
 
 @Schema({
-    collection: 'activities',
     timestamps: true,
     strict: 'throw',
     minimize: true,
@@ -365,7 +368,6 @@ export class Activity extends Expense {
 }
 
 @Schema({
-    collection: 'transports',
     timestamps: true,
     strict: 'throw',
     minimize: true,
@@ -414,6 +416,7 @@ export type RefundDocument = HydratedDocument<Refund>;
 export type HotelBookingDocument = HydratedDocument<HotelBooking>;
 export type FlightBookingDocument = HydratedDocument<FlightBooking>;
 export const ActivityCategorySchema = SchemaFactory.createForClass(ActivityCategory);
+export const ExpenseSchema = SchemaFactory.createForClass(Expense);
 export const ActivitySchema = SchemaFactory.createForClass(Activity);
 export const TransportSchema = SchemaFactory.createForClass(Transport);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);

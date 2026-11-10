@@ -24,6 +24,7 @@ export class Currency {
     @Prop({
         type: String,
         required: true,
+        unique: true,
         trim: true,
         uppercase: true,
         minlength: 3,

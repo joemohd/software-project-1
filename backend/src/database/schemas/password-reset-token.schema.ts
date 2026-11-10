@@ -2,7 +2,6 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { User } from './user.schema.js';
 
-// TODO: A user cannot have multiple active reset tokens
 @Schema({
     collection: 'password_reset_tokens',
     timestamps: true,
@@ -47,4 +46,9 @@ export const PasswordResetTokenSchema = SchemaFactory.createForClass(PasswordRes
 PasswordResetTokenSchema.index(
     { expiresAt: 1 },
     { expireAfterSeconds: 0 }
+);
+
+PasswordResetTokenSchema.index(
+    { userId: 1 },
+    { unique: true }
 );
