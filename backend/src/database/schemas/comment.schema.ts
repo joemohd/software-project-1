@@ -19,6 +19,7 @@ export class Comment {
     })
     text: string;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: BlogPost.name,
@@ -27,6 +28,7 @@ export class Comment {
     })
     postId: Types.ObjectId;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
@@ -34,25 +36,28 @@ export class Comment {
         index: true
     })
     userId: Types.ObjectId;
-}
 
-@Schema({
-    collection: 'replies',
-    timestamps: true,
-    strict: 'throw',
-    minimize: true,
-    _id: true
-})
-export class Reply extends Comment {
+    // TODO: Perform referential integrity checks in the backend application
+    // TODO: Perform heierarchal integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
-        ref: 'Comment',
-        required: true
+        ref: Comment.name,
+        default: null,
+        index: true
     })
-    commentId: Types.ObjectId;
+    parentCommentId: Types.ObjectId | null;
 }
 
 export const CommentSchema = SchemaFactory.createForClass(Comment);
 export type CommentDocument = HydratedDocument<Comment>;
-export const ReplySchema = SchemaFactory.createForClass(Reply);
-export type ReplyDocument = HydratedDocument<Reply>;
+
+CommentSchema.index({
+    postId: 1,
+    createdAt: -1
+});
+
+CommentSchema.index({
+    postId: 1,
+    parentCommentId: 1,
+    createdAt: -1
+});

@@ -37,15 +37,24 @@ export class User {
         unique: true,
         trim: true,
         lowercase: true,
+        maxlength: 254,
         match: /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     })
     emailAddress: string;
 
-    @Prop({ type: String })
+    @Prop({
+        type: String,
+        select: false
+    })
     passwordHash: string;
     // hashed by the service using argon2
 
-    @Prop({ type: String, trim: true, match: /^\+[1-9]\d{1,14}$/ })
+    @Prop({
+        type: String,
+        trim: true,
+        maxlength: 16,
+        match: /^\+[1-9]\d{1,14}$/
+    })
     phoneNumber: string;
     // transoformation of phone numbers into a format ITU-T E.164 standard should be handled by the backend server not the database
 
@@ -54,12 +63,32 @@ export class User {
         required: true,
         unique: true,
         trim: true,
-        lowercase: true
+        lowercase: true,
+        minlength: 3,
+        maxlength: 30,
+        match: /^[a-z0-9._]+$/
     })
     username: string;
 
+    // TODO: Enforce security measures later to make sure that the image URL only comes from our account on whatever cloud storage service we will use
+
+    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
-        type: String
+        type: String,
+        default: "", // we should upload a default pfp for users
+        validate: [{
+            validator: (value: string) => {
+                if (!value) return true;
+                
+                try {
+                    const parsed = new URL(value);
+                    return ['http:', 'https:'].includes(parsed.protocol);
+                } catch {
+                    return false;
+                }
+            },
+            message: 'Invalid image URL.'
+        }]
     })
     profileImageUrl: string;
 
@@ -71,6 +100,7 @@ export class User {
     })
     role: UserRole;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Country.name,
@@ -78,14 +108,16 @@ export class User {
         index: true
     })
     countryOfOriginId: Types.ObjectId;
-    // enforce referential integrity
 
     @Prop({
         type: Number,
         default: 0,
         min: 0,
         max: 5,
-        validate: Number.isInteger
+        validate: {
+            validator: Number.isInteger,
+            message: 'Login attempts must be an integer.'
+        }
     })
     loginAttempts: number;
 
@@ -109,26 +141,16 @@ export class User {
         default: false
     })
     isVerified: boolean;
-}
 
-@Schema({
-    collection: 'moderators',
-    timestamps: true,
-    strict: 'throw',
-    minimize: true,
-    _id: true
-})
-export class Moderator extends User {
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
-        required: true,
-        index: true
+        required: function (this: User) {
+            return this.role === UserRole.MODERATOR;
+        }
     })
-    adminId: Types.ObjectId;
+    adminId?: Types.ObjectId;
 }
 
-export type ModeratorDocument = HydratedDocument<Moderator>;
 export type UserDocument = HydratedDocument<User>;
 export const UserSchema = SchemaFactory.createForClass(User);
-export const ModeratorSchema = SchemaFactory.createForClass(Moderator);

@@ -11,7 +11,6 @@ import { Country } from './country.schema.js';
 export class City {
     @Prop({
         type: String,
-        unique: true,
         required: true,
         trim: true,
         minlength: 1,
@@ -19,6 +18,7 @@ export class City {
     })
     name: string;
 
+    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Country.name,
@@ -27,12 +27,43 @@ export class City {
     })
     countryId: Types.ObjectId;
 
+    // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
+
+    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
         type: [String],
-        default: []
+        default: [],
+        validate: [
+            {
+                validator: (value: string[]) => value.length <= 5,
+                message: 'A city cannot have more than 5 images.'
+            },
+            {
+                validator: (value: string[]) =>
+                    value.every(url => {
+                        try {
+                            const parsed = new URL(url);
+                            return ['http:', 'https:'].includes(parsed.protocol);
+                        } catch {
+                            return false;
+                        }
+                    }),
+                message: 'Invalid image URL.'
+            },
+            {
+                validator: (value: string[]) =>
+                    new Set(value).size === value.length,
+                message: 'Duplicate image URLs are not allowed.'
+            }
+        ]
     })
     imageUrls: string[];
 }
 
 export type CityDocument = HydratedDocument<City>;
 export const CitySchema = SchemaFactory.createForClass(City);
+
+CitySchema.index(
+    { name: 1, countryId: 1 },
+    { unique: true }
+);
