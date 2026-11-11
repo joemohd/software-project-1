@@ -106,6 +106,9 @@ export type ClonebaseItineraryDocument = HydratedDocument<ClonebaseItinerary>;
 export const ItinerarySchema = SchemaFactory.createForClass(Itinerary);
 export const ClonebaseItinerarySchema = SchemaFactory.createForClass(ClonebaseItinerary);
 
+ItinerarySchema.index({ userId: 1, visibility: 1, updatedAt: -1 });
+ItinerarySchema.index({ visibility: 1, startDate: 1 });
+
 ClonebaseItinerarySchema.index(
     { baseItineraryId: 1, derivedItineraryId: 1 },
     { unique: true }

@@ -3,7 +3,6 @@ import { HydratedDocument, Types } from 'mongoose';
 import { City } from './city.schema.js';
 import { User } from './user.schema.js';
 import { Room } from './provider.schema.js';
-import { Currency } from './currency.schema.js';
 import { Cabin } from './flight.schema.js';
 
 @Schema({
@@ -32,10 +31,29 @@ export class ActivityCategory {
     userId: Types.ObjectId;
 }
 
-@Schema({ collection: 'expenses', timestamps: true, strict: 'throw', minimize: true, discriminatorKey: 'expenseType' })
+@Schema({
+    collection: 'expenses',
+    timestamps: true,
+    strict: 'throw',
+    minimize: true,
+    discriminatorKey: 'expenseType'
+})
 export class Expense {
-    @Prop({ type: String, enum: ['activity', 'transport', 'booking'], required: true })
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: User.name,
+        required: true,
+        index: true
+    })
+    userId: Types.ObjectId;
+
+    @Prop({
+        type: String, enum: ['activity', 'transport', 'booking'],
+        required: true
+    })
     expenseType: 'activity' | 'transport' | 'booking';
+
     @Prop({
         type: String,
         required: true,
@@ -69,72 +87,72 @@ export enum BookingStatus {
     CANCELLED = 'cancelled'
 }
 
-export enum PaymentStatus {
-    PENDING = 'pending',
-    SUCCESSFUL = 'successful',
-    FAILED = 'failed'
+export enum CheckoutSessionStatus {
+    OPEN = 'open',
+    COMPLETE = 'complete',
+    EXPIRED = 'expired'
 }
 
-export enum PaymentMethod {
-    CARD = 'card',
-    BANK_TRANSFER = 'bank transfer'
+export enum CheckoutPaymentStatus {
+    PAID = 'paid',
+    UNPAID = 'unpaid',
+    NO_PAYMENT_REQUIRED = 'no_payment_required'
 }
 
-// TODO: Use the Checkout Sessions API instead of the Payment Intents API (also check against the functional requirements)
 @Schema({ _id: false })
 export class Payment {
     @Prop({
         type: String,
         required: true,
-        unique: true,
         trim: true,
         minlength: 1,
         maxlength: 255
     })
-    stripePaymentIntentId: string;
+    stripeCheckoutSessionId: string;
 
-    // TODO: Model monetary amounts as integers representing the smallest currency unit(USD)
     @Prop({
         type: Number,
-        required: true,
         min: 0,
-        validate: Number.isSafeInteger
+        validate: Number.isSafeInteger,
+        default: null
     })
-    amount: number;
+    amountTotal: number | null;
 
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
-        type: Types.ObjectId,
-        ref: Currency.name,
-        required: true,
-        index: true
-    })
-    currencyId: Types.ObjectId;
-
-    // TODO: Make the enum compatible with Stripe's payment life cycle
-    @Prop({
         type: String,
-        enum: Object.values(PaymentStatus),
-        required: true
+        lowercase: true,
+        minlength: 3,
+        maxlength: 3,
+        match: /^[a-z]{3}$/,
+        default: null
     })
-    status: PaymentStatus;
+    currency: string | null;
 
     @Prop({
         type: String,
-        enum: Object.values(PaymentMethod),
-        required: true
+        enum: Object.values(CheckoutSessionStatus),
+        default: null
     })
-    method: PaymentMethod;
+    status: CheckoutSessionStatus | null;
 
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
-        type: Types.ObjectId,
-        ref: 'Refund'
+        type: String,
+        enum: Object.values(CheckoutPaymentStatus),
+        default: null
     })
-    refundId: Types.ObjectId;
+    paymentStatus: CheckoutPaymentStatus | null;
+
+    @Prop({ type: [String], default: [] })
+    paymentMethodTypes: string[];
+
+    @Prop({ type: String, default: null })
+    paymentIntentId: string | null;
+
+    @Prop({ type: Date, default: null })
+    expiresAt: Date | null;
 }
 
-// TODO: Check again after changing to the Stripe Checkout Sessions API
 @Schema({
     collection: 'refunds',
     timestamps: true,
@@ -152,7 +170,6 @@ export class Refund {
     })
     stripeRefundId: string;
 
-    // TODO: Model monetary amounts as integers representing the smallest currency unit (USD)
     @Prop({
         type: Number,
         required: true,
@@ -161,35 +178,50 @@ export class Refund {
     })
     amount: number;
 
-    @Prop({
-        type: String,
-        enum: Object.values(PaymentStatus),
-        required: true
-    })
-    status: PaymentStatus;
+    @Prop({ type: String, required: true, lowercase: true, minlength: 3, maxlength: 3, match: /^[a-z]{3}$/ })
+    currency: string;
 
     @Prop({
         type: String,
-        required: true,
-        trim: true,
-        minlength: 1,
-        maxlength: 500
+        enum: ['pending', 'requires_action', 'succeeded', 'failed', 'canceled', null],
+        default: null
     })
-    reason: string;
+    status: 'pending' | 'requires_action' | 'succeeded' | 'failed' | 'canceled' | null;
+
+    @Prop({
+        type: String,
+        enum: ['duplicate', 'expired_uncaptured_charge', 'fraudulent', 'requested_by_customer'],
+        default: null
+    })
+    reason: 'duplicate' | 'expired_uncaptured_charge' | 'fraudulent' | 'requested_by_customer' | null;
+
+    @Prop({ type: String, default: null })
+    paymentIntentId: string | null;
+
+    @Prop({ type: String, default: null })
+    chargeId: string | null;
+
+    @Prop({ type: String, default: null })
+    balanceTransactionId: string | null;
+
+    @Prop({ type: String, default: null })
+    failureReason: string | null;
+
+    @Prop({ type: Date, default: null })
+    stripeCreatedAt: Date;
 }
 
-@Schema({ _id: false, discriminatorKey: 'bookingType' })
+@Schema({
+    _id: false,
+    discriminatorKey: 'bookingType'
+})
 export class Booking extends Expense {
-    @Prop({ type: String, enum: ['hotel', 'flight'], required: true })
-    bookingType: 'hotel' | 'flight';
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
-        type: Types.ObjectId,
-        ref: User.name,
-        required: true,
-        index: true
+        type: String,
+        enum: ['hotel', 'flight'],
+        required: true
     })
-    userId: Types.ObjectId;
+    bookingType: 'hotel' | 'flight';
 
     @Prop({
         type: Number,
@@ -216,7 +248,7 @@ export class Booking extends Expense {
 }
 
 @Schema({ _id: false })
-export class HotelBookingRoom {
+export class RoomBooking {
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
@@ -244,6 +276,7 @@ export class HotelBookingRoom {
     _id: true
 })
 export class HotelBooking extends Booking {
+    // TODO: The backend must prevent overlapping active booking dates for each room, including concurrent booking attempts.
     // TODO: Make it is a future date
     @Prop({
         type: Date,
@@ -260,17 +293,17 @@ export class HotelBooking extends Booking {
     nightsCount: number;
 
     @Prop({
-        type: [HotelBookingRoom],
+        type: [RoomBooking],
         required: true,
         validate: {
-            validator: (rooms: HotelBookingRoom[]) =>
+            validator: (rooms: RoomBooking[]) =>
                 Array.isArray(rooms) &&
                 rooms.length > 0 &&
                 new Set(rooms.map((room) => room.roomId?.toString())).size === rooms.length,
             message: 'At least one room is required and room IDs must be unique'
         }
     })
-    rooms: HotelBookingRoom[];
+    rooms: RoomBooking[];
 }
 
 @Schema({ _id: false })
@@ -299,11 +332,12 @@ export class FlightPassenger {
     _id: true
 })
 export class FlightBooking extends Booking {
+    // TODO: Add typical verification that we have
     @Prop({
-        type: FlightPassenger,
+        type: [FlightPassenger],
         required: true
     })
-    passenger: FlightPassenger;
+    passenger: FlightPassenger[];
 }
 
 @Schema({
@@ -349,6 +383,8 @@ export class Activity extends Expense {
     imageUrls: string[];
 
     // TODO: Perform referential integrity checks in the backend application
+
+    // TODO: Verify that the user owns the category
     @Prop({
         type: Types.ObjectId,
         ref: ActivityCategory.name,
@@ -424,8 +460,10 @@ export const RefundSchema = SchemaFactory.createForClass(Refund);
 export const BookingSchema = SchemaFactory.createForClass(Booking);
 export const HotelBookingSchema = SchemaFactory.createForClass(HotelBooking);
 export const FlightBookingSchema = SchemaFactory.createForClass(FlightBooking);
-export const HotelBookingRoomSchema = SchemaFactory.createForClass(HotelBookingRoom);
+export const BookingRoomSchema = SchemaFactory.createForClass(RoomBooking);
 export const FlightPassengerSchema = SchemaFactory.createForClass(FlightPassenger);
+
+ExpenseSchema.index({ userId: 1, createdAt: -1 });
 
 ActivityCategorySchema.index(
     { userId: 1, name: 1 },

@@ -198,7 +198,7 @@ export class Airline extends Provider {
         type: BagPolicy,
         required: true
     })
-    bagPolicies: BagPolicy;
+    bagPolicy: BagPolicy;
 }
 
 @Schema({
@@ -305,7 +305,7 @@ export class Hotel extends Provider {
         type: CheckingPolicies,
         required: true
     })
-    checkingPolicies: CheckingPolicies;
+    checkingPolicy: CheckingPolicies;
 }
 
 @Schema({
