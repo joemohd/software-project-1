@@ -34,3 +34,24 @@ RESPONSE: Standardized schema naming across the application:
 Only schema files were edited. No tests were run. Because field names are persisted in MongoDB, existing documents will need a names-only data migration before the renamed fields are used with existing data.
 
 ================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-11
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: Help me add necessary indices that would make queries run faster in my database.
+
+------------------------------------------------
+
+RESPONSE: Added three indexes to support common access patterns:
+
+- itinerary.schema.ts: owner and visibility filtering with newest-updated sorting; visibility and start-date filtering.
+- expense.schema.ts: a user’s expenses sorted by creation date.
+- blog-post.schema.ts: lookup by post for counting or listing likes.
+
+I didn’t run tests. There are no query implementations in the backend yet, so these target access patterns implied by the schemas; confirm them against real query plans as those queries are added. MongoDB creates schema-defined indexes when index creation is enabled.
+
+================================================
+

@@ -167,3 +167,5 @@ PostLikeSchema.index(
     { userId: 1, postId: 1 },
     { unique: true }
 );
+
+PostLikeSchema.index({ postId: 1 });

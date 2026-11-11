@@ -103,7 +103,6 @@ export class Flight {
     })
     cabins: Cabin[];
 
-    // TODO: Make sure that Cabin.freeBagWeight is always smaller than maxBagWeight
     @Prop({
         type: Number,
         required: true,
@@ -136,7 +135,7 @@ export type FlightDocument = HydratedDocument<Flight>;
 export const FlightSchema = SchemaFactory.createForClass(Flight);
 
 FlightSchema.index(
-    { airlineId: 1, number: 1 },
+    { airlineId: 1, number: 1, 'departure.timestamp': 1 },
     { unique: true }
 );
 
