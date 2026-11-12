@@ -38,7 +38,6 @@ export class Comment {
     userId: Types.ObjectId;
 
     // TODO: Perform referential integrity checks in the backend application
-    // TODO: Perform heierarchal integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
         ref: Comment.name,

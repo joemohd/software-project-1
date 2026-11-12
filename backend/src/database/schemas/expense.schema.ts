@@ -397,7 +397,6 @@ export class Activity extends Expense {
     @Prop({
         type: Types.ObjectId,
         ref: City.name,
-        required: true,
         index: true
     })
     cityId: Types.ObjectId;
