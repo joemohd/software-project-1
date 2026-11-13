@@ -88,7 +88,7 @@ export class BlogPost {
         validate: [
             {
                 validator: (value: string[]) => value.length <= 5,
-                message: 'A blog post cannot have more than 10 images.'
+                message: 'A blog post cannot have more than 5 images.'
             },
             {
                 validator: (value: string[]) =>

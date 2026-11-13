@@ -8,6 +8,7 @@
 /backend/dist
 /backend/node_modules
 /backend/build
+/backend/uploads
 
 # TypeScript build cache
 *.tsbuildinfo
