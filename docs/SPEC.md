@@ -141,15 +141,15 @@ Guest · Registered User · Admin (seeded only) · Airline Moderator (1 airline)
 | GEN-13 | Backend enforces all validation, rules, authorization; passwords salted hashes | M | - |
 | GEN-14..17 | UI/UX quality (navigation, feedback, responsiveness, consistency). Milestone 2 | M | - |
 
-## Optional bonuses (not in sheet: do last)
+## Optional bonuses 
 Email verification + forgot password (ACC-02/07) · email notifications · change flight / seat select (FLT-27/28) · hotel review reply (HTL-26) · attach bookings to itinerary (ITN-27) · itinerary PDF (ITN-28) · attach itinerary to post (BLG-13) · cloud deployment.
 
 ## Build order (by dependency)
-1. GEN-12 seed, GEN-08 uploads, GEN-01 notifications, ACC-01/04/19/06
-2. FLT-01..04, HTL-01..04, FLT-30
-3. Search (FLT-11/12/15, HTL-11/12/15) -> holds (FLT-22, HTL-16/18) -> PAY-02, PAY-01 -> confirm (FLT-23, HTL-17)
-4. Cancel/refund (FLT-26/06, HTL-21, PAY-03), reviews (HTL-23/24)
-5. Itineraries, blog, reports/moderation (GEN-09/10/07)
+ GEN-12 seed, GEN-08 uploads, GEN-01 notifications, ACC-01/04/19/06
+ FLT-01..04, HTL-01..04, FLT-30
+ Search (FLT-11/12/15, HTL-11/12/15) -> holds (FLT-22, HTL-16/18) -> PAY-02, PAY-01 -> confirm (FLT-23, HTL-17)
+ Cancel/refund (FLT-26/06, HTL-21, PAY-03), reviews (HTL-23/24)
+ Itineraries, blog, reports/moderation (GEN-09/10/07)
 
 ## Reference mock airports (8)
 CAI Africa/Cairo · DXB Asia/Dubai · LHR Europe/London · JFK America/New_York · CDG Europe/Paris · HND Asia/Tokyo · RUH Asia/Riyadh · FRA Europe/Berlin
