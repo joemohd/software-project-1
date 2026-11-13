@@ -55,3 +55,17 @@ I didn’t run tests. There are no query implementations in the backend yet, so 
 
 ================================================
 
+STUDENT: mahmoud mohamed
+DATE: 2026-11-13
+AGENT: Copilot SDK in VS Code
+
+------------------------------------------------
+
+PROMPT: Add the shared image-upload foundation from GEN-08: JPG/PNG validation, a 5 MB limit, server-side storage, URL responses, static serving, environment configuration, and record the work in AI_PROMPTS.txt.
+
+------------------------------------------------
+
+RESPONSE: Added a NestJS upload module with POST /api/upload/image. It stores uniquely named JPG/PNG files under backend/uploads, rejects files over 5 MB or with unsupported MIME types, returns a BASE_URL-based URL, and serves stored files from /uploads. Registered the module in AppModule, added BASE_URL to .env.example, ignored backend/uploads, and documented the prompt here. Entity-specific authorization and per-post/activity/hotel image-count enforcement must be added to those entity endpoints.
+
+================================================
+
