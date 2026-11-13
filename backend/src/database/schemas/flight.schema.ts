@@ -3,7 +3,13 @@ import { HydratedDocument, Types } from 'mongoose';
 import { Airport } from './airport.schema.js';
 import { Airline } from './provider.schema.js';
 
-@Schema({ _id: false })
+export enum FlightStatus {
+    SCHEDULED = 'scheduled',
+    CANCELLED = 'cancelled',
+    DEPARTED = 'departed'
+}
+
+@Schema()
 export class Cabin {
     @Prop({
         type: String,
@@ -65,6 +71,14 @@ export class FlightStop {
     minimize: true
 })
 export class Flight {
+    @Prop({
+        type: String,
+        enum: Object.values(FlightStatus),
+        default: FlightStatus.SCHEDULED,
+        required: true
+    })
+    status: FlightStatus;
+
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,

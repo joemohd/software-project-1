@@ -3,7 +3,6 @@ import { HydratedDocument, Types } from 'mongoose';
 import { City } from './city.schema.js';
 import { User } from './user.schema.js';
 import { Room } from './provider.schema.js';
-import { Cabin } from './flight.schema.js';
 
 @Schema({
     collection: 'activity_categories',
@@ -316,10 +315,8 @@ export class FlightPassenger {
     })
     count: number;
 
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: Types.ObjectId,
-        ref: Cabin.name,
         required: true
     })
     cabinId: Types.ObjectId;
