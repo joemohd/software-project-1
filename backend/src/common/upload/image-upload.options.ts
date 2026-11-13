@@ -1,15 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
-import { diskStorage } from 'multer';
-import { extname } from 'node:path';
+import { memoryStorage } from 'multer';
 
 export const imageUploadOptions = {
-  storage: diskStorage({
-    destination: './uploads',
-    filename: (_request, file, callback) => {
-      callback(null, `${randomUUID()}${extname(file.originalname).toLowerCase()}`);
-    },
-  }),
+  storage: memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024,
   },
