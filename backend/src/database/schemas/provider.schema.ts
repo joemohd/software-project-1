@@ -3,6 +3,16 @@ import { HydratedDocument, Types } from 'mongoose';
 import { City } from './city.schema.js';
 import { User } from './user.schema.js';
 
+export enum ProviderStatus {
+    ACTIVE = 'active',
+    DEACTIVATED = 'deactivated'
+}
+
+export enum RoomStatus {
+    ACTIVE = 'active',
+    DEACTIVATED = 'deactivated'
+}
+
 @Schema({ _id: false })
 export class DaysBeforeService {
     // inclusive
@@ -108,6 +118,14 @@ export class CheckingPolicies {
 export class Provider {
     @Prop({ type: String, enum: ['airline', 'hotel'], required: true })
     providerType: 'airline' | 'hotel';
+
+    @Prop({
+        type: String,
+        enum: Object.values(ProviderStatus),
+        default: ProviderStatus.ACTIVE,
+        required: true
+    })
+    status: ProviderStatus;
     // TODO: Perform referential integrity checks in the backend application
 
     // TODO: Make sure that the user is a moderator in the backend application
@@ -295,13 +313,6 @@ export class Hotel extends Provider {
     amenities: string[];
 
     @Prop({
-        type: Boolean,
-        default: true,
-        required: true
-    })
-    isActive: boolean;
-
-    @Prop({
         type: CheckingPolicies,
         required: true
     })
@@ -423,11 +434,12 @@ export class Room {
     blockedDates: BlockedDateRange[];
 
     @Prop({
-        type: Boolean,
-        required: true,
-        default: true
+        type: String,
+        enum: Object.values(RoomStatus),
+        default: RoomStatus.ACTIVE,
+        required: true
     })
-    isActive: boolean;
+    status: RoomStatus;
 }
 
 export type ProviderDocument = HydratedDocument<Provider>;
