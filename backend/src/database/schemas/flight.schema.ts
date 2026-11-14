@@ -9,16 +9,71 @@ export enum FlightStatus {
     DEPARTED = 'departed'
 }
 
-@Schema()
+export enum CabinType {
+    ECONOMY = 'Economy',
+    PREMIUM_ECONOMY = 'Premium Economy',
+    BUSINESS = 'Business',
+    FIRST = 'First'
+}
+
+export enum SeatType {
+    WINDOW = 'window',
+    MIDDLE = 'middle',
+    AISLE = 'aisle'
+}
+
+export enum SeatAvailability {
+    AVAILABLE = 'available',
+    HELD = 'held',
+    BOOKED = 'booked',
+    BLOCKED = 'blocked'
+}
+
+@Schema({ _id: false })
+export class Seat {
+    @Prop({
+        type: Number,
+        required: true,
+        min: 1,
+        validate: Number.isInteger
+    })
+    row: number;
+
+    @Prop({
+        type: String,
+        required: true,
+        uppercase: true,
+        match: /^[A-Z]$/
+    })
+    column: string;
+
+    @Prop({
+        type: String,
+        enum: Object.values(SeatType),
+        required: true
+    })
+    type: SeatType;
+
+    @Prop({
+        type: String,
+        enum: Object.values(SeatAvailability),
+        default: SeatAvailability.AVAILABLE,
+        required: true
+    })
+    availability: SeatAvailability;
+}
+
+@Schema({ _id: false })
 export class Cabin {
     @Prop({
         type: String,
+        enum: Object.values(CabinType),
         required: true,
         trim: true,
         minlength: 1,
         maxlength: 50
     })
-    name: string;
+    name: CabinType;
 
     // TODO: Unit should be kilograms
     @Prop({
@@ -36,6 +91,18 @@ export class Cabin {
         validate: Number.isInteger
     })
     seatCount: number;
+
+    @Prop({
+        type: [Seat],
+        default: [],
+        validate: {
+            validator: (seats: Seat[]) =>
+                Array.isArray(seats) &&
+                new Set(seats.map((seat) => `${seat.row}:${String(seat.column).toUpperCase()}`)).size === seats.length,
+            message: 'Seat row and column coordinates must be unique within a cabin'
+        }
+    })
+    seats: Seat[];
 
     // TODO: Model monetary amounts as integers representing the smallest currency unit (USD)
     @Prop({
