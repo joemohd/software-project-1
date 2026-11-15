@@ -8,7 +8,7 @@
 /backend/dist
 /backend/node_modules
 /backend/build
-/backend/uploads
+docs/functional-requirements.numbers
 
 # TypeScript build cache
 *.tsbuildinfo
@@ -64,4 +64,3 @@ lerna-debug.log*
 
 # Node diagnostic reports
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
-docs/functional-requirements.numbers
