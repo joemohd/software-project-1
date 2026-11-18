@@ -85,14 +85,6 @@ export class Cabin {
     freeBagWeight: number;
 
     @Prop({
-        type: Number,
-        required: true,
-        min: 1,
-        validate: Number.isInteger
-    })
-    seatCount: number;
-
-    @Prop({
         type: [Seat],
         default: [],
         validate: {
