@@ -8,6 +8,7 @@
 /backend/dist
 /backend/node_modules
 /backend/build
+docs/functional-requirements.numbers
 
 # TypeScript build cache
 *.tsbuildinfo

@@ -5,6 +5,7 @@ import { AppService } from './app.service.js';
 import databaseConfig from './database/database.config.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { UploadModule } from './common/upload/upload.module.js';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AuthModule } from './auth/auth.module.js';
     }),
     DatabaseModule,
     AuthModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],

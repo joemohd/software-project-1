@@ -55,3 +55,83 @@ I didn’t run tests. There are no query implementations in the backend yet, so 
 
 ================================================
 
+STUDENT: mahmoud mohamed
+DATE: 2026-11-13
+AGENT: Copilot SDK in VS Code
+
+------------------------------------------------
+
+PROMPT: Add the shared image-upload foundation from GEN-08: JPG/PNG validation, a 5 MB limit, server-side storage, URL responses, static serving, environment configuration, and record the work in AI_PROMPTS.txt.
+
+------------------------------------------------
+
+RESPONSE: Added a NestJS upload module with POST /api/upload/image. It stores uniquely named JPG/PNG files under backend/uploads, rejects files over 5 MB or with unsupported MIME types, returns a BASE_URL-based URL, and serves stored files from /uploads. Registered the module in AppModule, added BASE_URL to .env.example, ignored backend/uploads, and documented the prompt here. Entity-specific authorization and per-post/activity/hotel image-count enforcement must be added to those entity endpoints.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: How does this backend manage file uploads?
+
+------------------------------------------------
+
+RESPONSE: The backend uses NestJS’s Multer integration for a single image-upload endpoint:
+
+- **Endpoint:** `POST /api/upload/image`, with a `multipart/form-data` field named `file` (`upload.controller.ts`).
+- **Validation:** Only JPEG and PNG MIME types are accepted, and each file is limited to 5 MB (`image-upload.options.ts`).
+- **Storage:** Files are written to `./uploads` with a random UUID filename and the original extension. The directory is ignored by Git (`image-upload.options.ts`, `.gitignore`).
+- **Serving and response:** The app exposes that directory under `/uploads`; after a successful upload, the endpoint returns `{ "url": "…" }`, built from `BASE_URL` (default `http://localhost:3000`) (`main.ts`, `upload.controller.ts`).
+
+The upload module is registered in the app. The current endpoint is generic: it doesn’t associate files with a specific post, activity, hotel, or airline, and the documented per-entity image-count limits aren’t enforced here.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: How easy would it be to switch from this to Cloudinary?
+
+------------------------------------------------
+
+RESPONSE: It should be a **small, localized backend change**. Upload handling is already behind one controller and one Multer configuration, so the main change would be replacing local disk storage in `image-upload.options.ts` with a Cloudinary upload, then returning Cloudinary’s `secure_url` from `upload.controller.ts`.
+
+The endpoint can likely keep accepting the same `multipart/form-data` request, so the frontend should need little or no change if it already uses the returned URL. You’d also add Cloudinary credentials to environment configuration and remove or stop using the local `/uploads` static serving.
+
+The main effort is operational: create/configure a Cloudinary account, set credentials securely in each environment, and decide how existing locally stored images will be migrated. Also, entity-specific authorization and image-count limits are not currently enforced, so switching storage alone wouldn’t add those safeguards.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: I added the connection string to .env. Please perform the necessary changes to make it connect to Cloudinary instead of ./uploads. After that, provide a brief guide in /docs to my other teammates to make them understand how they would use the upload feature in their API endpoints.
+
+------------------------------------------------
+
+RESPONSE: Replaced Multer disk storage and local static file serving with in-memory uploads to Cloudinary. Kept POST /api/upload/image, JPG/PNG filtering, the 5 MB limit, and the { url } response shape; added an exported UploadService so entity modules can reuse the shared upload flow. Added docs/image-uploads.md with integration guidance and updated .env.example with the CLOUDINARY_URL name and format. Entity authorization and image-count enforcement remain responsibilities of the relevant entity endpoints.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: Can you read the cross-cutting rules in the functional requirements file and make sure that the file/image uploads follow them?
+
+------------------------------------------------
+
+RESPONSE: Reviewed GEN-08 and GEN-13. The shared upload service now checks the actual JPG/PNG file signature in addition to the declared MIME type, and the blog post image-count validator now has the correct five-image error message. Confirmed the blog post and hotel schemas cap image arrays at five and airline logoUrl is a single field. Updated docs/image-uploads.md to describe these controls and the current gaps: no activity image field/API exists, and generic uploads cannot enforce entity ownership/count limits. No auth guards or entity API controllers currently exist in this backend, so those checks must be applied when those feature endpoints are implemented.
+
+================================================

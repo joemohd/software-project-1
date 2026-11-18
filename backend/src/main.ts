@@ -13,6 +13,11 @@ async function bootstrap() {
   app.enableCors({ origin: app.get(ConfigService).get<string>('auth.frontendUrl'), credentials: true });
   // Validates request bodies against DTO class-validator rules and rejects unknown fields
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { AppModule } from './app.module.js';
+
+async function bootstrap() {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();
