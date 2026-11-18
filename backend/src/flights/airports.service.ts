@@ -9,8 +9,8 @@ import { ListAirportsQueryDto } from './dto/list-airports.dto.js';
 import { PAGE_SIZE } from './flights.constants.js';
 
 type AirportRecord = { _id: Types.ObjectId; iataCode: string; name: string; cityId: Types.ObjectId };
-type CityRecord = { _id: Types.ObjectId; name: string; countryId: Types.ObjectId };
-type CountryRecord = { _id: Types.ObjectId; code: string; name: string; timeZones: string[] };
+type CityRecord = { _id: Types.ObjectId; name: string; countryId: Types.ObjectId; timeZone?: string };
+type CountryRecord = { _id: Types.ObjectId; code: string; name: string };
 
 /** Escapes user input so it is matched literally inside a MongoDB $regex. */
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -43,12 +43,12 @@ export class AirportsService {
     // Two batched lookups instead of one per airport
     const cities = await this.cityModel
       .find({ _id: { $in: airports.map((airport) => airport.cityId) } })
-      .select('name countryId')
+      .select('name countryId timeZone')
       .lean<CityRecord[]>()
       .exec();
     const countries = await this.countryModel
       .find({ _id: { $in: cities.map((city) => city.countryId) } })
-      .select('code name timeZones')
+      .select('code name')
       .lean<CountryRecord[]>()
       .exec();
 
@@ -81,10 +81,8 @@ export class AirportsService {
       name: airport.name,
       city: city ? { id: city._id.toString(), name: city.name } : null,
       country: country ? { id: country._id.toString(), code: country.code, name: country.name } : null,
-      // TODO(FLT-02): read Airport.timeZone once the shared airport schema and seed get that field.
-      // Until then the zone is only known for single-zone countries (e.g. EG -> Africa/Cairo);
-      // multi-zone countries (US, CA, RU, BR, AU...) return null.
-      timeZone: country?.timeZones?.length === 1 ? country.timeZones[0] : null,
+      // An airport uses its city's IANA zone (City.timeZone is optional, so it may be unset)
+      timeZone: city?.timeZone ?? null,
     };
   }
 }

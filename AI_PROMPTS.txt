@@ -168,3 +168,14 @@ Go ahead with step 2 only: PUT /api/airlines/:id/baggage-policy (FLT-08) and /ca
 How the output was used:
 Reviewed the diff and asked for refundPercentage to be whole numbers only (0-100, @IsInt) instead of allowing 2 decimals. Moderator-only endpoints with a reusable ownership check (404 for a missing or malformed airline id, 403 for another moderator's airline); the update also filters on moderatorId. Baggage price is whole cents > 0. Cancellation tiers with unique thresholds are mapped onto the existing startDay/endDay schema, so no schema change was needed. Build, lint and tests passed (82/82, 18 new), plus a mocked smoke test through the real JWT and Roles guards. Committed and pushed.
 ================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02
+Prompt:
+Merge origin/dev into feature/FLT-flights-module; if anything conflicts, stop and show me. Then fix(flights): read airport time zone from city (FLT-02): use City.timeZone, remove the country fallback and its TODO, update the tests. Build, test, lint, show me the diff before committing.
+How the output was used:
+The merge had no conflicts (dev #15 moved the time zone from Country to City). GET /api/airports now returns the airport's city timeZone, or null if the city has none; the single-zone country fallback and its TODO are removed. Tests updated: a multi-zone country (US) city now gets its own zone, and a city without a zone returns null. Reviewed the diff; build, lint and tests passed (83/83).
+================================================
