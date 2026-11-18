@@ -48,25 +48,6 @@ export class Country {
     })
     currencyIds: Types.ObjectId[];
 
-    @Prop({
-        type: [String],
-        default: [],
-        validate: {
-            validator: (timeZones: string[]) =>
-                Array.isArray(timeZones) &&
-                timeZones.every((timeZone) => {
-                    try {
-                        new Intl.DateTimeFormat('en', { timeZone });
-                        return true;
-                    } catch {
-                        return false;
-                    }
-                }),
-            message: 'Country time zones must be valid IANA identifiers.'
-        }
-    })
-    timeZones: string[];
-
     // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
 
     // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
