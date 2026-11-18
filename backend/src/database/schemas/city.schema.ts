@@ -58,6 +58,22 @@ export class City {
         ]
     })
     imageUrls: string[];
+
+    @Prop({
+        type: String,
+        validate: {
+            validator: (timeZone: string) => {
+                try {
+                    new Intl.DateTimeFormat('en', { timeZone });
+                    return true;
+                } catch {
+                    return false;
+                }
+            },
+            message: 'City timezone must be a valid IANA identifier.'
+        }
+    })
+    timeZone: string;
 }
 
 export type CityDocument = HydratedDocument<City>;
