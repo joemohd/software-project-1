@@ -157,3 +157,14 @@ Start steps 1 and 2: the flights module with GET /api/airports (FLT-02), then PU
 How the output was used:
 Reviewed the plan, then step 1 only: a public, paginated (10 per page) airports list with search by IATA prefix or name, joined to city and country. The time zone comes from the country only when it has a single zone, with a TODO until Airport.timeZone exists. Reviewed the diff; build, lint and tests passed (64/64, 5 new), plus a mocked smoke test of the route and Swagger. Step 2 not started yet.
 ================================================
+
+================================================
+Date: 2026-11-18
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-08, FLT-09 (step 2)
+Prompt:
+Go ahead with step 2 only: PUT /api/airlines/:id/baggage-policy (FLT-08) and /cancellation-policy (FLT-09) with the moderator ownership check, as in your plan. Build, test and lint, then show me the diff before committing. Add the AI_PROMPTS.txt entry in the same commit. Don't push.
+How the output was used:
+Reviewed the diff and asked for refundPercentage to be whole numbers only (0-100, @IsInt) instead of allowing 2 decimals. Moderator-only endpoints with a reusable ownership check (404 for a missing or malformed airline id, 403 for another moderator's airline); the update also filters on moderatorId. Baggage price is whole cents > 0. Cancellation tiers with unique thresholds are mapped onto the existing startDay/endDay schema, so no schema change was needed. Build, lint and tests passed (82/82, 18 new), plus a mocked smoke test through the real JWT and Roles guards. Committed and pushed.
+================================================
