@@ -4,6 +4,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import databaseConfig from './database/database.config.js';
 import { DatabaseModule } from './database/database.module.js';
+import { AuthModule } from './auth/auth.module.js';
 import { UploadModule } from './common/upload/upload.module.js';
 
 @Module({
@@ -13,6 +14,7 @@ import { UploadModule } from './common/upload/upload.module.js';
       load: [databaseConfig],
     }),
     DatabaseModule,
+    AuthModule,
     UploadModule,
   ],
   controllers: [AppController],
