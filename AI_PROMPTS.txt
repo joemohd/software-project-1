@@ -135,3 +135,14 @@ PROMPT: Can you read the cross-cutting rules in the functional requirements file
 RESPONSE: Reviewed GEN-08 and GEN-13. The shared upload service now checks the actual JPG/PNG file signature in addition to the declared MIME type, and the blog post image-count validator now has the correct five-image error message. Confirmed the blog post and hotel schemas cap image arrays at five and airline logoUrl is a single field. Updated docs/image-uploads.md to describe these controls and the current gaps: no activity image field/API exists, and generic uploads cannot enforce entity ownership/count limits. No auth guards or entity API controllers currently exist in this backend, so those checks must be applied when those feature endpoints are implemented.
 
 ================================================
+
+================================================
+Date: 2026-11-18
+Student: Eyad
+Tool: Claude Code
+Related Requirement: setup (build fix)
+Prompt:
+Repair backend/package-lock.json (invalid JSON after a merge) and merge the two half-pasted bootstrap() functions in main.ts into one, adding Swagger UI at /api/docs with cookie auth.
+How the output was used:
+Reviewed the diff, build and tests passed (59/59), opened as PR #13 into dev.
+================================================
