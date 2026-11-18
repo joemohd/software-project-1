@@ -146,3 +146,14 @@ Repair backend/package-lock.json (invalid JSON after a merge) and merge the two 
 How the output was used:
 Reviewed the diff, build and tests passed (59/59), opened as PR #13 into dev.
 ================================================
+
+================================================
+Date: 2026-11-18
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02 (step 1); FLT-08, FLT-09 planned as step 2
+Prompt:
+Start steps 1 and 2: the flights module with GET /api/airports (FLT-02), then PUT /api/airlines/:id/baggage-policy (FLT-08) and /cancellation-policy (FLT-09), including the moderator ownership check. One step per commit, conventional messages citing the requirement IDs. Show the plan first, then the diff before each commit. Don't touch shared files (schemas, main.ts, app.module.ts beyond registering FlightsModule).
+How the output was used:
+Reviewed the plan, then step 1 only: a public, paginated (10 per page) airports list with search by IATA prefix or name, joined to city and country. The time zone comes from the country only when it has a single zone, with a TODO until Airport.timeZone exists. Reviewed the diff; build, lint and tests passed (64/64, 5 new), plus a mocked smoke test of the route and Swagger. Step 2 not started yet.
+================================================
