@@ -1,13 +1,11 @@
 import { Module } from '@nestjs/common';
-import { getModelToken, MongooseModule } from '@nestjs/mongoose';
+import { MongooseModule } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import {
     Activity,
     ActivityCategory,
     ActivityCategorySchema,
     ActivitySchema,
-    Booking,
-    BookingSchema,
     Expense,
     ExpenseSchema,
     FlightBooking,
@@ -64,7 +62,9 @@ const databaseModels = [
     { name: Expense.name, schema: ExpenseSchema, discriminators: [
         { name: Activity.name, schema: ActivitySchema, value: 'activity' },
         { name: Transport.name, schema: TransportSchema, value: 'transport' },
-        { name: Booking.name, schema: BookingSchema, value: 'booking' },
+        // Mongoose only allows discriminators of the root model, so booking subtypes sit directly under Expense
+        { name: HotelBooking.name, schema: HotelBookingSchema, value: 'hotel_booking' },
+        { name: FlightBooking.name, schema: FlightBookingSchema, value: 'flight_booking' },
     ] },
     { name: Refund.name, schema: RefundSchema },
     { name: Airport.name, schema: AirportSchema },
@@ -89,19 +89,6 @@ const databaseModels = [
     { name: User.name, schema: UserSchema },
 ];
 
-const bookingSubtypeModels = [
-    {
-        provide: getModelToken(HotelBooking.name),
-        inject: [getModelToken(Booking.name)],
-        useFactory: (bookingModel: any) => bookingModel.discriminator(HotelBooking.name, HotelBookingSchema, 'hotel'),
-    },
-    {
-        provide: getModelToken(FlightBooking.name),
-        inject: [getModelToken(Booking.name)],
-        useFactory: (bookingModel: any) => bookingModel.discriminator(FlightBooking.name, FlightBookingSchema, 'flight'),
-    },
-];
-
 @Module({
     imports: [
         MongooseModule.forRootAsync({
@@ -110,7 +97,6 @@ const bookingSubtypeModels = [
         }),
         MongooseModule.forFeature(databaseModels),
     ],
-    providers: bookingSubtypeModels,
-    exports: [MongooseModule, ...bookingSubtypeModels.map(({ provide }) => provide)],
+    exports: [MongooseModule],
 })
 export class DatabaseModule {}

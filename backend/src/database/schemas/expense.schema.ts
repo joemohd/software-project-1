@@ -48,11 +48,9 @@ export class Expense {
     })
     userId: Types.ObjectId;
 
-    @Prop({
-        type: String, enum: ['activity', 'transport', 'booking'],
-        required: true
-    })
-    expenseType: 'activity' | 'transport' | 'booking';
+    // Discriminator key: set by Mongoose from the discriminator model, so it must not be a @Prop
+    // (subclasses inherit @Props, and a discriminator schema may not declare the key itself).
+    expenseType: 'activity' | 'transport' | 'hotel_booking' | 'flight_booking';
 
     @Prop({
         type: String,
@@ -211,10 +209,9 @@ export class Refund {
     stripeCreatedAt: Date;
 }
 
-@Schema({
-    _id: false,
-    discriminatorKey: 'bookingType'
-})
+// Shared base class for HotelBooking and FlightBooking only; not registered as a model.
+// bookingType is a plain field here, not a discriminator key.
+@Schema({ _id: false })
 export class Booking extends Expense {
     @Prop({
         type: String,

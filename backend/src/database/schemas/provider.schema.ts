@@ -116,7 +116,8 @@ export class CheckingPolicies {
     discriminatorKey: 'providerType'
 })
 export class Provider {
-    @Prop({ type: String, enum: ['airline', 'hotel'], required: true })
+    // Discriminator key: set by Mongoose from the discriminator model, so it must not be a @Prop
+    // (subclasses inherit @Props, and a discriminator schema may not declare the key itself).
     providerType: 'airline' | 'hotel';
 
     @Prop({
