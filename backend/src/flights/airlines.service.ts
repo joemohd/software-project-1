@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model, Types } from 'mongoose';
-import { Airline, CancellationPolicy } from '../database/schemas/provider.schema.js';
+import { Airline, CancellationPolicy, ProviderStatus } from '../database/schemas/provider.schema.js';
 import { BaggagePolicyResponseDto, UpdateBaggagePolicyDto } from './dto/update-baggage-policy.dto.js';
 import {
   CancellationPolicyResponseDto,
@@ -9,7 +9,7 @@ import {
   UpdateCancellationPolicyDto,
 } from './dto/update-cancellation-policy.dto.js';
 
-type OwnedAirline = { _id: Types.ObjectId; moderatorId: Types.ObjectId };
+export type OwnedAirline = { _id: Types.ObjectId; moderatorId: Types.ObjectId; status: ProviderStatus };
 type BagPolicyRecord = { _id: Types.ObjectId; bagPolicy: { priceExtraBag: number; maxExtraBagCount: number } };
 type CancellationPolicyRecord = { _id: Types.ObjectId; cancellationPolicies: CancellationPolicy[] };
 
@@ -26,7 +26,7 @@ export class AirlinesService {
   async findOwnedAirline(airlineId: string, moderatorId: string): Promise<OwnedAirline> {
     if (!isValidObjectId(airlineId)) throw new NotFoundException(AIRLINE_NOT_FOUND);
 
-    const airline = await this.airlineModel.findById(airlineId).select('moderatorId').lean<OwnedAirline>().exec();
+    const airline = await this.airlineModel.findById(airlineId).select('moderatorId status').lean<OwnedAirline>().exec();
     if (!airline) throw new NotFoundException(AIRLINE_NOT_FOUND);
     if (airline.moderatorId.toString() !== moderatorId) {
       throw new ForbiddenException('You can only manage your own airline.');

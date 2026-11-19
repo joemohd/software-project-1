@@ -179,3 +179,14 @@ Merge origin/dev into feature/FLT-flights-module; if anything conflicts, stop an
 How the output was used:
 The merge had no conflicts (dev #15 moved the time zone from Country to City). GET /api/airports now returns the airport's city timeZone, or null if the city has none; the single-zone country fallback and its TODO are removed. Tests updated: a multi-zone country (US) city now gets its own zone, and a city without a zone returns null. Reviewed the diff; build, lint and tests passed (83/83).
 ================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-03, FLT-04 (step 3)
+Prompt:
+Start step 3: POST /api/flights (FLT-03). Add luxon and @types/luxon, keeping the lockfile change to just those packages. Times arrive as local airport time (City.timeZone) and are stored in UTC; 400 if a city has no time zone. Reject same airports, arrival not after departure, departure in the past, inactive airline, airline not owned by the moderator, and a duplicate flight number for the same airline on the same local departure date (checked in the service). Cabins: take seat rows and a column layout (e.g. "ABC-DEF") and generate seats[] with window/middle/aisle types, all available; at least one cabin; per-seat model, no schema changes.
+How the output was used:
+Reviewed the diff and asked for cancelled flights to be excluded from the duplicate flight-number check (with a test). Added luxon 3.7.2 and @types/luxon 3.7.6 (lockfile diff limited to those two packages; npm ci passes). POST /api/flights converts local times with luxon and also rejects impossible dates and times skipped by daylight saving. The duplicate check covers the whole local departure day and ignores cancelled flights; a unique-index race returns 409. Cabins take firstRow/lastRow plus a layout; seats are generated with outer letters as window and letters next to "-" as aisle, and cabin types and row ranges must not overlap. Build, lint and tests passed (129/129, 46 new), plus a mocked smoke test through the real guards and a check against the real Flight schema validators. Committed and pushed.
+================================================
