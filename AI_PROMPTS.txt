@@ -135,3 +135,17 @@ PROMPT: Can you read the cross-cutting rules in the functional requirements file
 RESPONSE: Reviewed GEN-08 and GEN-13. The shared upload service now checks the actual JPG/PNG file signature in addition to the declared MIME type, and the blog post image-count validator now has the correct five-image error message. Confirmed the blog post and hotel schemas cap image arrays at five and airline logoUrl is a single field. Updated docs/image-uploads.md to describe these controls and the current gaps: no activity image field/API exists, and generic uploads cannot enforce entity ownership/count limits. No auth guards or entity API controllers currently exist in this backend, so those checks must be applied when those feature endpoints are implemented.
 
 ================================================
+
+STUDENT: Rushdy
+DATE: 2026-11-19
+AGENT: Claude Code (Claude Opus 5.5)
+
+------------------------------------------------
+
+PROMPT: Implement every endpoint assigned to me (Rushdy.md): BLG-01 to BLG-10, BLG-12 and BLG-13, without touching other teammates' files.
+
+------------------------------------------------
+
+RESPONSE: Added the blog module in backend/src/blog/ (controllers for /api/posts, /api/comments, /api/tags and /api/authors; BlogService, PublicBlogService, CommentsService, LikesService; DTOs with class-validator and Swagger decorators; unit tests) and registered BlogModule in app.module.ts. Used the existing schemas, global JWT guard, @CurrentUser/@Public decorators and the shared UploadService unchanged. Published posts by deactivated authors are hidden and their comments show as "Deleted user" (ACC-12); Archived posts are treated as hidden (GEN-10). Added GET /api/posts/mine/:id so an author can open a draft for editing. I reviewed the generated code, and the build, lint and all unit tests pass.
+
+================================================

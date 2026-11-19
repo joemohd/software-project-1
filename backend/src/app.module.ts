@@ -6,6 +6,7 @@ import databaseConfig from './database/database.config.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UploadModule } from './common/upload/upload.module.js';
+import { BlogModule } from './blog/blog.module.js';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { UploadModule } from './common/upload/upload.module.js';
     DatabaseModule,
     AuthModule,
     UploadModule,
+    BlogModule,
   ],
   controllers: [AppController],
   providers: [AppService],
