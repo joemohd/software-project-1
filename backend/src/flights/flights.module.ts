@@ -5,6 +5,7 @@ import { AirlinesController } from './airlines.controller.js';
 import { AirlinesService } from './airlines.service.js';
 import { AirportsController } from './airports.controller.js';
 import { AirportsService } from './airports.service.js';
+import { FlightManifestService } from './flight-manifest.service.js';
 import { FlightsController } from './flights.controller.js';
 import { FlightsService } from './flights.service.js';
 
@@ -13,6 +14,6 @@ import { FlightsService } from './flights.service.js';
 @Module({
   imports: [DatabaseModule, FlightBookingsModule],
   controllers: [AirportsController, AirlinesController, FlightsController],
-  providers: [AirportsService, AirlinesService, FlightsService],
+  providers: [AirportsService, AirlinesService, FlightsService, FlightManifestService],
 })
 export class FlightsModule {}
