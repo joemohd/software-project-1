@@ -12,7 +12,7 @@ export enum UserActivityStatus {
 export enum UserRole {
     USER = 'user',
     ADMIN = 'admin',
-    FLIGHT_MODERATOR = 'flight moderator',
+    AIRLINE_MODERATOR = 'airline moderator',
     HOTEL_MODERATOR = 'hotel moderator'
 }
 
