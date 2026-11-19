@@ -12,7 +12,8 @@ export enum UserActivityStatus {
 export enum UserRole {
     USER = 'user',
     ADMIN = 'admin',
-    MODERATOR = 'moderator'
+    FLIGHT_MODERATOR = 'flight moderator',
+    HOTEL_MODERATOR = 'hotel moderator'
 }
 
 @Schema({
