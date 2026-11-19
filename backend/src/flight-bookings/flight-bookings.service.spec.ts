@@ -80,6 +80,7 @@ describe('FlightBookingsService (FLT-19, FLT-21, FLT-22)', () => {
     inbound = flightFrom(jfk, cai, '2026-12-10T22:00:00Z', '2026-12-11T15:00:00Z');
 
     flightModel = {
+      collection: { collectionName: 'flights' } as never,
       find: vi.fn(() => query([outbound, inbound])),
       findById: vi.fn(() => query(outbound)),
       findOneAndUpdate: vi.fn(() => query({ _id: outbound._id })),
@@ -142,6 +143,7 @@ describe('FlightBookingsService (FLT-19, FLT-21, FLT-22)', () => {
       expect(saved.passengers.map((p: { type: PassengerType }) => p.type)).toEqual(['adult', 'adult', 'infant']);
       expect(releaseCalls()).toHaveLength(0);
 
+      expect(result.reference).toBeNull(); // shown only once Confirmed
       expect(result).toMatchObject({
         status: BookingStatus.PENDING_PAYMENT,
         fareTotal: 94500,
@@ -322,6 +324,85 @@ describe('FlightBookingsService (FLT-19, FLT-21, FLT-22)', () => {
         holdExpiresAt: { $lte: NOW },
         'segments.flightId': { $in: [outbound._id] },
       });
+    });
+  });
+
+  describe('listForUser and findOneForUser (FLT-25)', () => {
+    const storedBooking = (status: BookingStatus, overrides: Record<string, unknown> = {}) => ({
+      _id: new Types.ObjectId(),
+      userId: new Types.ObjectId(userId),
+      reference: 'K7M2QX',
+      status,
+      segments: [{ flightId: outbound._id, cabinName: CabinType.ECONOMY, seatPrice: 45000, seats: [{ passengerIndex: 0, row: 10, column: 'A' }] }],
+      passengers: [{ fullName: 'Mona Hassan', dateOfBirth: new Date('1990-05-31T00:00:00Z'), type: PassengerType.ADULT, passportNumber: 'A1234567', extraBagWeights: [] }],
+      fareTotal: 45000,
+      baggageFee: 0,
+      holdExpiresAt: null,
+      ...overrides,
+    });
+
+    it('expires overdue holds for this user, then returns each group with its page and total', async () => {
+      const upcoming = storedBooking(BookingStatus.PENDING_PAYMENT);
+      const past = storedBooking(BookingStatus.COMPLETED);
+      const expired = storedBooking(BookingStatus.EXPIRED);
+      bookingModel.aggregate = vi.fn(() => query([
+        { upcoming: [upcoming], upcomingTotal: [{ count: 1 }], past: [past], pastTotal: [{ count: 13 }], cancelled: [expired], cancelledTotal: [{ count: 1 }] },
+      ]));
+
+      const result = await service.listForUser(userId, { pastPage: 2 });
+
+      // Lazy expiry first, scoped to the user
+      expect(bookingModel.find.mock.calls[0][0]).toMatchObject({ status: BookingStatus.PENDING_PAYMENT, userId: new Types.ObjectId(userId) });
+      expect(bookingModel.find.mock.invocationCallOrder[0]).toBeLessThan(bookingModel.aggregate.mock.invocationCallOrder[0]);
+      // The pipeline gets this user and the requested page per group
+      const pipeline = bookingModel.aggregate.mock.calls[0][0];
+      expect(pipeline[0].$match.userId).toEqual(new Types.ObjectId(userId));
+      expect(pipeline.at(-1).$facet.past[2]).toEqual({ $skip: 10 });
+
+      expect(result.upcoming).toMatchObject({ page: 1, pageSize: 10, total: 1 });
+      expect(result.past).toMatchObject({ page: 2, pageSize: 10, total: 13 });
+      expect(result.cancelled).toMatchObject({ page: 1, pageSize: 10, total: 1 });
+      expect(result.upcoming.items[0]).toMatchObject({ id: upcoming._id.toString(), status: 'pending payment', reference: null });
+      expect(result.past.items[0]).toMatchObject({ status: 'completed', reference: 'K7M2QX' });
+      expect(result.cancelled.items[0]).toMatchObject({ status: 'expired', reference: null });
+      expect(result.upcoming.items[0].segments[0]).toMatchObject({ flightNumber: 'MS 123', departure: { iataCode: 'CAI' } });
+    });
+
+    it('returns empty groups when the user has no bookings', async () => {
+      bookingModel.aggregate = vi.fn(() => query([{ upcoming: [], upcomingTotal: [], past: [], pastTotal: [], cancelled: [], cancelledTotal: [] }]));
+      const result = await service.listForUser(userId, {});
+      for (const group of [result.upcoming, result.past, result.cancelled]) {
+        expect(group).toEqual({ items: [], page: 1, pageSize: 10, total: 0 });
+      }
+    });
+
+    it('returns one of the user\'s bookings with the summary shape, reference shown once Confirmed', async () => {
+      const confirmed = storedBooking(BookingStatus.CONFIRMED);
+      bookingModel.findOne = vi.fn(() => query(confirmed));
+
+      const result = await service.findOneForUser(userId, confirmed._id.toString());
+
+      expect(bookingModel.findOne.mock.calls[0][0]).toEqual({ _id: confirmed._id.toString(), userId: new Types.ObjectId(userId) });
+      expect(result).toMatchObject({ id: confirmed._id.toString(), reference: 'K7M2QX', status: 'confirmed', fareTotal: 45000, total: 45000 });
+      expect(result.passengers[0]).toMatchObject({ type: 'adult', dateOfBirth: '1990-05-31', seats: [{ segment: 0, seat: '10A' }] });
+    });
+
+    it('hides the reference of a Pending Payment booking', async () => {
+      bookingModel.findOne = vi.fn(() => query(storedBooking(BookingStatus.PENDING_PAYMENT)));
+      const result = await service.findOneForUser(userId, new Types.ObjectId().toString());
+      expect(result.reference).toBeNull();
+    });
+
+    it("404s (not 403) for someone else's booking", async () => {
+      // The query filters on the user, so another user's booking simply isn't found
+      bookingModel.findOne = vi.fn(() => query(null));
+      await expect(service.findOneForUser(userId, new Types.ObjectId().toString())).rejects.toThrow(NotFoundException);
+    });
+
+    it('404s for a malformed id without querying', async () => {
+      bookingModel.findOne = vi.fn();
+      await expect(service.findOneForUser(userId, 'not-an-id')).rejects.toThrow(NotFoundException);
+      expect(bookingModel.findOne).not.toHaveBeenCalled();
     });
   });
 

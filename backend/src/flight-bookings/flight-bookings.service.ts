@@ -7,13 +7,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { isValidObjectId, Model, Types } from 'mongoose';
 import { Airport } from '../database/schemas/airport.schema.js';
 import { City } from '../database/schemas/city.schema.js';
 import { BookingStatus, FlightBooking, PassengerType } from '../database/schemas/expense.schema.js';
 import { CabinType, Flight, FlightStatus, SeatAvailability } from '../database/schemas/flight.schema.js';
 import { Airline, ProviderStatus } from '../database/schemas/provider.schema.js';
 import { utcToLocal } from '../flights/flight-time.js';
+import { PAGE_SIZE } from '../flights/flights.constants.js';
+import { BOOKING_GROUPS, BookingGroup, bookingListPipeline, GroupPages } from './booking-list.js';
 import {
   assertBaggage,
   assertPassengerMix,
@@ -22,6 +24,7 @@ import {
   bookingName,
   generateReference,
   infantFare,
+  isReferenceVisible,
   normalizePassport,
   passengerTypeOn,
   pickSeats,
@@ -29,7 +32,12 @@ import {
   segmentFare,
 } from './booking-rules.js';
 import { CreateFlightBookingDto } from './dto/create-flight-booking.dto.js';
-import { BookingAirportDto, FlightBookingResponseDto } from './dto/flight-booking-response.dto.js';
+import {
+  BookingAirportDto,
+  FlightBookingListResponseDto,
+  FlightBookingResponseDto,
+} from './dto/flight-booking-response.dto.js';
+import { ListFlightBookingsQueryDto } from './dto/list-flight-bookings.dto.js';
 import { HOLD_MINUTES, HOLD_SWEEP_BATCH_SIZE, MAX_HOLD_RETRIES, REFERENCE_ATTEMPTS } from './flight-bookings.constants.js';
 
 type FlightRecord = Flight & { _id: Types.ObjectId };
@@ -53,6 +61,8 @@ type BookingContext = {
 
 /** Seats held on one flight for one booking. */
 type HeldSegment = { flightId: Types.ObjectId; cabinName: CabinType; seats: SeatCoordinate[] };
+
+const BOOKING_NOT_FOUND = 'Flight booking not found.';
 
 const isDuplicateReferenceError = (error: unknown) => {
   const mongoError = error as { code?: number; keyPattern?: Record<string, unknown> } | null;
@@ -180,6 +190,55 @@ export class FlightBookingsService {
       throw error;
     }
 
+    return this.toResponse(booking, context);
+  }
+
+  /**
+   * FLT-25: the user's flight bookings grouped as upcoming, past and cancelled (Expired counts as cancelled), by the
+   * outbound flight's departure time, 10 per page per group, newest first. Overdue holds are expired first so their
+   * status is current.
+   */
+  async listForUser(userId: string, query: ListFlightBookingsQueryDto): Promise<FlightBookingListResponseDto> {
+    const userObjectId = new Types.ObjectId(userId);
+    await this.expireOverdueHolds({ userId: userObjectId });
+
+    const pages: GroupPages = {
+      upcoming: query.upcomingPage ?? 1,
+      past: query.pastPage ?? 1,
+      cancelled: query.cancelledPage ?? 1,
+    };
+    const [result] = await this.bookingModel
+      .aggregate<Record<string, unknown[]>>(
+        bookingListPipeline(userObjectId, pages, new Date(), this.flightModel.collection.collectionName),
+      )
+      .exec();
+
+    const groupItems = (group: BookingGroup) => (result?.[group] ?? []) as BookingRecord[];
+    const allBookings = BOOKING_GROUPS.flatMap(groupItems);
+    const context = await this.loadContext(allBookings.flatMap((booking) => booking.segments.map((segment) => segment.flightId)));
+
+    const page = (group: BookingGroup) => ({
+      items: groupItems(group).map((booking) => this.toResponse(booking, context)),
+      page: pages[group],
+      pageSize: PAGE_SIZE,
+      total: ((result?.[`${group}Total`] ?? []) as { count: number }[])[0]?.count ?? 0,
+    });
+    return { upcoming: page('upcoming'), past: page('past'), cancelled: page('cancelled') };
+  }
+
+  /** FLT-25: one of the user's bookings. 404 if it doesn't exist or belongs to someone else (never 403). */
+  async findOneForUser(userId: string, bookingId: string): Promise<FlightBookingResponseDto> {
+    if (!isValidObjectId(bookingId)) throw new NotFoundException(BOOKING_NOT_FOUND);
+    const userObjectId = new Types.ObjectId(userId);
+    await this.expireOverdueHolds({ userId: userObjectId });
+
+    const booking = await this.bookingModel
+      .findOne({ _id: bookingId, userId: userObjectId })
+      .lean<BookingRecord>()
+      .exec();
+    if (!booking) throw new NotFoundException(BOOKING_NOT_FOUND);
+
+    const context = await this.loadContext(booking.segments.map((segment) => segment.flightId));
     return this.toResponse(booking, context);
   }
 
@@ -324,7 +383,7 @@ export class FlightBookingsService {
     return context.airports.get(airportId.toString()) ?? { iataCode: '???', timeZone: 'UTC' };
   }
 
-  /** FLT-21: the booking summary (also used by the booking details endpoint later). */
+  /** FLT-21/FLT-25: the booking summary, shared by create, list and details. */
   private toResponse(booking: BookingRecord, context: BookingContext): FlightBookingResponseDto {
     const infants = booking.passengers.filter((passenger) => passenger.type === PassengerType.INFANT).length;
     const stop = (stop: { airportId: Types.ObjectId; timestamp: Date }): BookingAirportDto => {
@@ -340,7 +399,7 @@ export class FlightBookingsService {
 
     return {
       id: booking._id.toString(),
-      reference: booking.reference,
+      reference: isReferenceVisible(booking.status) ? booking.reference : null,
       status: booking.status,
       segments: booking.segments.map((segment) => {
         const flight = context.flights.get(segment.flightId.toString());

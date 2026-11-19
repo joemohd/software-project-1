@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 import { BadRequestException } from '@nestjs/common';
 import { DateTime } from 'luxon';
-import { PassengerType } from '../database/schemas/expense.schema.js';
+import { BookingStatus, PassengerType } from '../database/schemas/expense.schema.js';
 import { Seat, SeatAvailability } from '../database/schemas/flight.schema.js';
 import {
   ADULT_MIN_AGE,
@@ -151,6 +151,14 @@ function bySeatOrder(a: Seat, b: Seat): number {
 /** FLT-23: a random booking reference such as "K7M2QX"; uniqueness is enforced by the database index. */
 export function generateReference(random: (max: number) => number = randomInt): string {
   return Array.from({ length: REFERENCE_LENGTH }, () => REFERENCE_ALPHABET[random(REFERENCE_ALPHABET.length)]).join('');
+}
+
+/**
+ * FLT-23/FLT-25: the booking reference is only shown once the booking has been Confirmed (payment verified).
+ * Completed and Cancelled bookings were confirmed first; Pending Payment and Expired ones never were.
+ */
+export function isReferenceVisible(status: BookingStatus): boolean {
+  return [BookingStatus.CONFIRMED, BookingStatus.COMPLETED, BookingStatus.CANCELLED].includes(status);
 }
 
 /** Booking name shown in lists, e.g. "MS 123 CAI -> JFK" or "MS 123 CAI -> JFK, MS 124 JFK -> CAI". */

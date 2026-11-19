@@ -43,7 +43,8 @@ export class BookingPassengerResponseDto {
 // FLT-21: booking summary shown before payment
 export class FlightBookingResponseDto {
   @ApiProperty() id: string;
-  @ApiProperty({ example: 'K7M2QX' }) reference: string;
+  @ApiProperty({ example: 'K7M2QX', nullable: true, type: String, description: 'Shown once the booking is Confirmed; null before' })
+  reference: string | null;
   @ApiProperty({ enum: BookingStatus, example: BookingStatus.PENDING_PAYMENT }) status: BookingStatus;
   @ApiProperty({ type: [BookingSegmentResponseDto] }) segments: BookingSegmentResponseDto[];
   @ApiProperty({ type: [BookingPassengerResponseDto] }) passengers: BookingPassengerResponseDto[];
@@ -52,4 +53,19 @@ export class FlightBookingResponseDto {
   @ApiProperty({ description: 'fareTotal + baggageFee in cents', example: 99500 }) total: number;
   @ApiProperty({ nullable: true, description: 'When the seat hold ends (UTC); pay before this', example: '2026-11-19T12:10:00.000Z' })
   holdExpiresAt: string | null;
+}
+
+// FLT-25: one page of one group
+export class FlightBookingGroupPageDto {
+  @ApiProperty({ type: [FlightBookingResponseDto] }) items: FlightBookingResponseDto[];
+  @ApiProperty({ example: 1 }) page: number;
+  @ApiProperty({ example: 10 }) pageSize: number;
+  @ApiProperty({ example: 3 }) total: number;
+}
+
+// FLT-25: the user's bookings grouped as Upcoming, Past and Cancelled (Expired counts as Cancelled), newest first
+export class FlightBookingListResponseDto {
+  @ApiProperty({ type: FlightBookingGroupPageDto }) upcoming: FlightBookingGroupPageDto;
+  @ApiProperty({ type: FlightBookingGroupPageDto }) past: FlightBookingGroupPageDto;
+  @ApiProperty({ type: FlightBookingGroupPageDto }) cancelled: FlightBookingGroupPageDto;
 }

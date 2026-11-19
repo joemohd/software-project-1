@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { PassengerType } from '../database/schemas/expense.schema.js';
+import { BookingStatus, PassengerType } from '../database/schemas/expense.schema.js';
 import { SeatAvailability } from '../database/schemas/flight.schema.js';
 import { generateSeats } from '../flights/cabin-seats.js';
 import {
@@ -11,6 +11,7 @@ import {
   bookingName,
   generateReference,
   infantFare,
+  isReferenceVisible,
   passengerTypeOn,
   pickSeats,
   segmentFare,
@@ -222,6 +223,16 @@ describe('booking rules (FLT-19, FLT-22)', () => {
     it('uses the random source it is given', () => {
       expect(generateReference(() => 0)).toBe('AAAAAA');
     });
+  });
+
+  it.each([
+    [BookingStatus.PENDING_PAYMENT, false],
+    [BookingStatus.EXPIRED, false],
+    [BookingStatus.CONFIRMED, true],
+    [BookingStatus.COMPLETED, true],
+    [BookingStatus.CANCELLED, true],
+  ])('shows the reference for a %s booking: %s', (status, visible) => {
+    expect(isReferenceVisible(status)).toBe(visible);
   });
 
   it('names a booking after its flights', () => {
