@@ -144,7 +144,7 @@ export class User {
         type: Types.ObjectId,
         ref: User.name,
         required: function (this: User) {
-            return this.role === UserRole.MODERATOR;
+            return this.role === UserRole.FLIGHT_MODERATOR || this.role === UserRole.HOTEL_MODERATOR;
         }
     })
     adminId?: Types.ObjectId;
