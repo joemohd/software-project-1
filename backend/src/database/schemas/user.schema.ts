@@ -47,7 +47,6 @@ export class User {
         select: false
     })
     passwordHash: string;
-    // hashed by the service using argon2
 
     @Prop({
         type: String,
@@ -71,15 +70,13 @@ export class User {
     username: string;
 
     // TODO: Enforce security measures later to make sure that the image URL only comes from our account on whatever cloud storage service we will use
-
-    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
         type: String,
         default: "", // we should upload a default pfp for users
         validate: [{
             validator: (value: string) => {
                 if (!value) return true;
-                
+
                 try {
                     const parsed = new URL(value);
                     return ['http:', 'https:'].includes(parsed.protocol);

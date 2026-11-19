@@ -3,7 +3,7 @@ import { HydratedDocument, Types } from 'mongoose';
 import { City } from './city.schema.js';
 import { User } from './user.schema.js';
 import { Room } from './provider.schema.js';
-import { CabinType } from './flight.schema.js';
+import { CabinType, Flight } from './flight.schema.js';
 
 @Schema({
     collection: 'activity_categories',
@@ -48,11 +48,7 @@ export class Expense {
     })
     userId: Types.ObjectId;
 
-    @Prop({
-        type: String, enum: ['activity', 'transport', 'booking'],
-        required: true
-    })
-    expenseType: 'activity' | 'transport' | 'booking';
+    expenseType: 'activity' | 'transport' | 'hotel_booking' | 'flight_booking';
 
     @Prop({
         type: String,
@@ -212,16 +208,12 @@ export class Refund {
 }
 
 @Schema({
-    _id: false,
-    discriminatorKey: 'bookingType'
+    timestamps: true,
+    strict: 'throw',
+    minimize: true,
+    _id: true,
 })
 export class Booking extends Expense {
-    @Prop({
-        type: String,
-        enum: ['hotel', 'flight'],
-        required: true
-    })
-    bookingType: 'hotel' | 'flight';
 
     @Prop({
         type: Number,
@@ -277,7 +269,7 @@ export class RoomBooking {
 })
 export class HotelBooking extends Booking {
     // TODO: The backend must prevent overlapping active booking dates for each room, including concurrent booking attempts.
-    // TODO: Make it is a future date
+    // TODO: Make sure it is a future date
     @Prop({
         type: Date,
         required: true
@@ -331,6 +323,14 @@ export class FlightPassenger {
     _id: true
 })
 export class FlightBooking extends Booking {
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: Flight.name,
+        required: true
+    })
+    flightId: Types.ObjectId;
+
     // TODO: Add typical verification that we have
     @Prop({
         type: [FlightPassenger],
@@ -347,11 +347,9 @@ export class FlightBooking extends Booking {
 })
 export class Activity extends Expense {
     @Prop({ type: Date })
-    time: Date; //optional
+    time: Date;
 
     // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
-
-    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
         type: [String],
         default: [],
@@ -416,7 +414,7 @@ export class Transport extends Expense {
         required: true,
         trim: true
     })
-    mode:  string;
+    mode: string;
 
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
@@ -455,7 +453,6 @@ export const ActivitySchema = SchemaFactory.createForClass(Activity);
 export const TransportSchema = SchemaFactory.createForClass(Transport);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 export const RefundSchema = SchemaFactory.createForClass(Refund);
-export const BookingSchema = SchemaFactory.createForClass(Booking);
 export const HotelBookingSchema = SchemaFactory.createForClass(HotelBooking);
 export const FlightBookingSchema = SchemaFactory.createForClass(FlightBooking);
 export const BookingRoomSchema = SchemaFactory.createForClass(RoomBooking);
