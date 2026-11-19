@@ -190,3 +190,14 @@ Start step 3: POST /api/flights (FLT-03). Add luxon and @types/luxon, keeping th
 How the output was used:
 Reviewed the diff and asked for cancelled flights to be excluded from the duplicate flight-number check (with a test). Added luxon 3.7.2 and @types/luxon 3.7.6 (lockfile diff limited to those two packages; npm ci passes). POST /api/flights converts local times with luxon and also rejects impossible dates and times skipped by daylight saving. The duplicate check covers the whole local departure day and ignores cancelled flights; a unique-index race returns 409. Cabins take firstRow/lastRow plus a layout; seats are generated with outer letters as window and letters next to "-" as aisle, and cabin types and row ranges must not overlap. Build, lint and tests passed (129/129, 46 new), plus a mocked smoke test through the real guards and a check against the real Flight schema validators. Committed and pushed.
 ================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-04, FLT-05 (step 4)
+Prompt:
+Start step 4: POST /api/flights/:id/cabins and PATCH /api/flights/:id/cabins/:cabinId (FLT-04, FLT-05), using :cabinId as the cabin name. POST adds a cabin type not already on the flight (same seat generation and row-overlap rules as POST /flights). PATCH can change seatPrice and the row range; adding rows is fine, removing rows is rejected if any seat in them is held or booked. Only Scheduled flights, owner moderator only. Existing bookings keep their agreed price.
+How the output was used:
+Reviewed the diff. Both endpoints check flight exists (404), ownership (403), Scheduled and not yet departed (409). POST pushes the generated cabin in one update guarded on "type not on the flight and no seats in those rows". PATCH runs one atomic update pipeline that only matches if no seat in the removed rows is held or booked and no other cabin uses the new rows; it keeps in-range seats with their current availability, adds new rows using the cabin's existing layout and sets the price. Build, lint and tests passed (152/152, 23 new). Also verified against a throwaway MongoDB 8.0 Docker container: 31 integration checks including simulated races (a seat held between read and write is never removed) and an HTTP smoke test through the real guards.
+================================================

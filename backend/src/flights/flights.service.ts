@@ -1,21 +1,46 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { isValidObjectId, Model, Types } from 'mongoose';
 import { Airport } from '../database/schemas/airport.schema.js';
 import { City } from '../database/schemas/city.schema.js';
-import { Flight, FlightStatus, SeatAvailability } from '../database/schemas/flight.schema.js';
+import { Cabin, Flight, FlightStatus, Seat, SeatAvailability } from '../database/schemas/flight.schema.js';
 import { ProviderStatus } from '../database/schemas/provider.schema.js';
 import { AirlinesService } from './airlines.service.js';
-import { buildCabins } from './cabin-seats.js';
-import { CreateFlightDto } from './dto/create-flight.dto.js';
+import {
+  assertNoRowOverlap,
+  assertRowOrder,
+  buildCabins,
+  layoutOf,
+  RowRange,
+  rowRangeOf,
+  rowsBetween,
+  seatsForRows,
+} from './cabin-seats.js';
+import { CreateCabinDto, CreateFlightDto } from './dto/create-flight.dto.js';
 import { FlightResponseDto } from './dto/flight-response.dto.js';
+import { UpdateCabinDto } from './dto/update-cabin.dto.js';
 import { localDayBoundsUtc, localToUtc, utcToLocal } from './flight-time.js';
 
 type AirportCityRecord = { _id: Types.ObjectId; cityId: Types.ObjectId };
 type CityZoneRecord = { _id: Types.ObjectId; timeZone?: string };
 type FlightRecord = Flight & { _id: Types.ObjectId };
 
+const FLIGHT_NOT_FOUND = 'Flight not found.';
+// Seats a passenger is holding or has paid for: their rows can't be removed (FLT-05)
+const TAKEN_SEATS = [SeatAvailability.HELD, SeatAvailability.BOOKED];
+
 const isDuplicateKeyError = (error: unknown) => (error as { code?: number } | null)?.code === 11000;
+const existingRanges = (cabins: Cabin[]) => cabins.map(rowRangeOf).filter((range): range is RowRange => range !== null);
+const flightChangedError = () =>
+  new ConflictException(
+    'The flight changed while saving (a seat was held or booked, a cabin changed, or the flight was cancelled). Reload it and try again.',
+  );
 
 @Injectable()
 export class FlightsService {
@@ -71,6 +96,140 @@ export class FlightsService {
     return toFlightResponse(flight, zones.departure, zones.arrival);
   }
 
+  // FLT-04: add a cabin type the flight doesn't have yet (same seat generation and row rules as on creation)
+  async addCabin(flightId: string, moderatorId: string, dto: CreateCabinDto): Promise<FlightResponseDto> {
+    const flight = await this.findEditableFlight(flightId, moderatorId);
+    if (flight.cabins.some((cabin) => cabin.name === dto.name)) {
+      throw new ConflictException(`This flight already has a ${dto.name} cabin.`);
+    }
+    const [cabin] = buildCabins([dto], flight.maxBagWeight);
+    assertNoRowOverlap([...existingRanges(flight.cabins), dto]);
+
+    const updated = await this.flightModel
+      .findOneAndUpdate(
+        {
+          ...editableFilter(flight._id),
+          // The same two checks again inside the write, in case the flight changed after it was read
+          $and: [
+            { 'cabins.name': { $ne: dto.name } },
+            { cabins: { $not: { $elemMatch: { seats: { $elemMatch: { row: { $gte: dto.firstRow, $lte: dto.lastRow } } } } } } },
+          ],
+        },
+        { $push: { cabins: cabin } },
+        { returnDocument: 'after', runValidators: true },
+      )
+      .lean<FlightRecord>()
+      .exec();
+    if (!updated) throw flightChangedError();
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * FLT-05: change a cabin's seat price and/or row range. Added rows reuse the cabin's seat layout; rows can only be
+   * removed if none of their seats is held or booked. Bookings keep the price they were made at, so a new price only
+   * affects later bookings.
+   */
+  async updateCabin(
+    flightId: string,
+    cabinName: string,
+    moderatorId: string,
+    dto: UpdateCabinDto,
+  ): Promise<FlightResponseDto> {
+    if (dto.seatPrice === undefined && dto.firstRow === undefined && dto.lastRow === undefined) {
+      throw new BadRequestException('Send at least one of seatPrice, firstRow or lastRow.');
+    }
+    const flight = await this.findEditableFlight(flightId, moderatorId);
+    const cabin = flight.cabins.find((candidate) => candidate.name === cabinName);
+    if (!cabin) throw new NotFoundException(`This flight has no "${cabinName}" cabin.`);
+    const current = rowRangeOf(cabin);
+    if (!current) throw new BadRequestException(`${cabin.name} has no seats, so it can't be edited here.`);
+
+    const firstRow = dto.firstRow ?? current.firstRow;
+    const lastRow = dto.lastRow ?? current.lastRow;
+    assertRowOrder(cabin.name, firstRow, lastRow);
+    const otherCabins = flight.cabins.filter((other) => other.name !== cabin.name);
+    assertNoRowOverlap([...existingRanges(otherCabins), { name: cabin.name, firstRow, lastRow }]);
+
+    const outsideRange = (seat: Seat) => seat.row < firstRow || seat.row > lastRow;
+    const taken = cabin.seats.filter((seat) => outsideRange(seat) && TAKEN_SEATS.includes(seat.availability));
+    if (taken.length) {
+      const labels = taken.slice(0, 10).map((seat) => `${seat.row}${seat.column}`);
+      throw new ConflictException(
+        `Can't remove those rows: ${taken.length} seat(s) are held or booked (${labels.join(', ')}${taken.length > 10 ? ', ...' : ''}).`,
+      );
+    }
+
+    const existingRows = new Set(cabin.seats.map((seat) => seat.row));
+    const newRows = rowsBetween(firstRow, lastRow).filter((row) => !existingRows.has(row));
+    const addedSeats = seatsForRows(newRows, layoutOf(cabin));
+
+    const updated = await this.flightModel
+      .findOneAndUpdate(
+        {
+          ...editableFilter(flight._id),
+          $and: [
+            // Atomic with the write: no seat in the rows being removed was held or booked after we read the flight
+            {
+              cabins: {
+                $elemMatch: {
+                  name: cabin.name,
+                  seats: {
+                    $not: {
+                      $elemMatch: {
+                        availability: { $in: TAKEN_SEATS },
+                        $or: [{ row: { $lt: firstRow } }, { row: { $gt: lastRow } }],
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            // ...and no other cabin took any of the new rows
+            {
+              cabins: {
+                $not: {
+                  $elemMatch: { name: { $ne: cabin.name }, seats: { $elemMatch: { row: { $gte: firstRow, $lte: lastRow } } } },
+                },
+              },
+            },
+          ],
+        },
+        [resizeCabinStage(cabin.name, firstRow, lastRow, addedSeats, dto.seatPrice ?? cabin.seatPrice)],
+        { returnDocument: 'after', updatePipeline: true },
+      )
+      .lean<FlightRecord>()
+      .exec();
+    if (!updated) throw flightChangedError();
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * FLT-04/FLT-05: the flight exists (404), belongs to the moderator's airline (403/404, checked before revealing its
+   * state), is Scheduled and hasn't departed yet (409).
+   */
+  private async findEditableFlight(flightId: string, moderatorId: string): Promise<FlightRecord> {
+    if (!isValidObjectId(flightId)) throw new NotFoundException(FLIGHT_NOT_FOUND);
+    const flight = await this.flightModel.findById(flightId).lean<FlightRecord>().exec();
+    if (!flight) throw new NotFoundException(FLIGHT_NOT_FOUND);
+
+    await this.airlinesService.findOwnedAirline(flight.airlineId.toString(), moderatorId);
+
+    if (flight.status !== FlightStatus.SCHEDULED) {
+      throw new ConflictException(`Only scheduled flights can be edited; this flight is ${flight.status}.`);
+    }
+    if (flight.departure.timestamp <= new Date()) {
+      throw new ConflictException('This flight has already departed, so it can no longer be edited.');
+    }
+    return flight;
+  }
+
+  private async toResponse(flight: FlightRecord): Promise<FlightResponseDto> {
+    const zones = await this.airportTimeZones(flight.departure.airportId.toString(), flight.arrival.airportId.toString());
+    return toFlightResponse(flight, zones.departure, zones.arrival);
+  }
+
   /**
    * FLT-02/FLT-03: both airports must be in the predefined list, and their cities need an IANA time zone,
    * otherwise local times can't be converted to UTC.
@@ -119,6 +278,49 @@ export class FlightsService {
     const localDate = utcToLocal(departureAt, timeZone).slice(0, 10);
     return new ConflictException(`This airline already has flight ${number} departing on ${localDate}.`);
   }
+}
+
+// Only a Scheduled flight that hasn't departed can be changed (FLT-05, FLT-30)
+function editableFilter(flightId: Types.ObjectId) {
+  return { _id: flightId, status: FlightStatus.SCHEDULED, 'departure.timestamp': { $gt: new Date() } };
+}
+
+/**
+ * FLT-05 as one atomic update stage: in the named cabin keep the seats inside firstRow..lastRow (with their current
+ * availability, so a seat held meanwhile stays held), append the seats of the new rows and set the price.
+ * Other cabins are left as they are.
+ */
+export function resizeCabinStage(name: string, firstRow: number, lastRow: number, addedSeats: Seat[], seatPrice: number) {
+  const keptSeats = {
+    $filter: {
+      input: '$$cabin.seats',
+      as: 'seat',
+      cond: { $and: [{ $gte: ['$$seat.row', firstRow] }, { $lte: ['$$seat.row', lastRow] }] },
+    },
+  };
+  return {
+    $set: {
+      cabins: {
+        $map: {
+          input: '$cabins',
+          as: 'cabin',
+          in: {
+            // $cond: [if this is the cabin, the updated cabin, otherwise unchanged]
+            $cond: [
+              { $eq: ['$$cabin.name', name] },
+              {
+                $mergeObjects: [
+                  '$$cabin',
+                  { seatPrice: { $literal: seatPrice }, seats: { $concatArrays: [keptSeats, { $literal: addedSeats }] } },
+                ],
+              },
+              '$$cabin',
+            ],
+          },
+        },
+      },
+    },
+  };
 }
 
 export function toFlightResponse(flight: FlightRecord, departureZone: string, arrivalZone: string): FlightResponseDto {

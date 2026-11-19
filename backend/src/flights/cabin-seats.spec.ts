@@ -1,6 +1,15 @@
 import { BadRequestException } from '@nestjs/common';
 import { CabinType, SeatAvailability } from '../database/schemas/flight.schema.js';
-import { buildCabins, generateSeats, parseLayout } from './cabin-seats.js';
+import {
+  assertNoRowOverlap,
+  buildCabins,
+  generateSeats,
+  layoutOf,
+  parseLayout,
+  rowRangeOf,
+  rowsBetween,
+  seatsForRows,
+} from './cabin-seats.js';
 import { CreateCabinDto } from './dto/create-flight.dto.js';
 
 const typesOf = (layout: string) => parseLayout(layout).map(({ column, type }) => `${column}:${type}`);
@@ -38,6 +47,44 @@ describe('generateSeats (FLT-04)', () => {
     expect(seats.every((seat) => seat.availability === SeatAvailability.AVAILABLE)).toBe(true);
     expect(seats.slice(0, 5).map((seat) => `${seat.row}${seat.column}`)).toEqual(['10A', '10B', '10C', '10D', '11A']);
     expect(seats.at(-1)).toMatchObject({ row: 12, column: 'D', type: 'window' });
+  });
+});
+
+describe('existing cabin helpers (FLT-05)', () => {
+  const economy = { name: CabinType.ECONOMY, seatPrice: 45000, freeBagWeight: 23, seats: generateSeats(10, 12, 'AB-CD') };
+
+  it('reads the row range and the layout of an existing cabin', () => {
+    expect(rowRangeOf(economy)).toEqual({ name: 'Economy', firstRow: 10, lastRow: 12 });
+    expect(layoutOf(economy).map(({ column, type }) => `${column}:${type}`)).toEqual([
+      'A:window', 'B:aisle', 'C:aisle', 'D:window',
+    ]);
+  });
+
+  it('has no range or layout for a cabin without seats', () => {
+    const empty = { ...economy, seats: [] };
+    expect(rowRangeOf(empty)).toBeNull();
+    expect(layoutOf(empty)).toEqual([]);
+  });
+
+  it('builds seats for chosen rows from a layout', () => {
+    const seats = seatsForRows([13, 15], layoutOf(economy));
+    expect(seats.map((seat) => `${seat.row}${seat.column}`)).toEqual(['13A', '13B', '13C', '13D', '15A', '15B', '15C', '15D']);
+    expect(rowsBetween(3, 6)).toEqual([3, 4, 5, 6]);
+  });
+
+  it('accepts touching but not overlapping row ranges', () => {
+    expect(() =>
+      assertNoRowOverlap([
+        { name: CabinType.ECONOMY, firstRow: 10, lastRow: 20 },
+        { name: CabinType.BUSINESS, firstRow: 1, lastRow: 9 },
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertNoRowOverlap([
+        { name: CabinType.ECONOMY, firstRow: 9, lastRow: 20 },
+        { name: CabinType.BUSINESS, firstRow: 1, lastRow: 9 },
+      ]),
+    ).toThrow('Economy rows 9-20 overlap Business rows 1-9.');
   });
 });
 
