@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -19,6 +19,7 @@ import { UserRole } from '../database/schemas/user.schema.js';
 import { CreateCabinDto, CreateFlightDto } from './dto/create-flight.dto.js';
 import { FlightResponseDto } from './dto/flight-response.dto.js';
 import { UpdateCabinDto } from './dto/update-cabin.dto.js';
+import { UpdateFlightDto } from './dto/update-flight.dto.js';
 import { FlightsService } from './flights.service.js';
 
 @ApiTags('Flights')
@@ -46,6 +47,47 @@ export class FlightsController {
   @ApiConflictResponse({ description: 'Flight number already used by this airline on that local departure date' })
   create(@CurrentUser('id') moderatorId: string, @Body() dto: CreateFlightDto): Promise<FlightResponseDto> {
     return this.flightsService.create(moderatorId, dto);
+  }
+
+  // PATCH /api/flights/:id (FLT-05)
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Change departure/arrival times (and airports, until a seat is held or booked)',
+    description:
+      'Local times as on creation. Changing an airport also needs that side\'s local time. A side whose time is not sent keeps its stored time.',
+  })
+  @ApiParam({ name: 'id', description: 'Flight id' })
+  @ApiOkResponse({ type: FlightResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Nothing to update, same airports, missing local time for a changed airport, invalid times, or a city without a time zone',
+  })
+  @ApiForbiddenResponse({ description: "Not a moderator, or not your airline's flight" })
+  @ApiNotFoundResponse({ description: 'Flight not found' })
+  @ApiConflictResponse({
+    description: 'Airports changed after a seat was held or booked, duplicate flight number on that date, flight not Scheduled or already departed',
+  })
+  update(
+    @Param('id') flightId: string,
+    @CurrentUser('id') moderatorId: string,
+    @Body() dto: UpdateFlightDto,
+  ): Promise<FlightResponseDto> {
+    return this.flightsService.update(flightId, moderatorId, dto);
+  }
+
+  // POST /api/flights/:id/cancel (FLT-06)
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel a Scheduled flight',
+    description: 'Sets the status to cancelled (hidden from search) and releases all held seats, in one atomic update.',
+  })
+  @ApiParam({ name: 'id', description: 'Flight id' })
+  @ApiOkResponse({ type: FlightResponseDto })
+  @ApiForbiddenResponse({ description: "Not a moderator, or not your airline's flight" })
+  @ApiNotFoundResponse({ description: 'Flight not found' })
+  @ApiConflictResponse({ description: 'Flight not Scheduled (e.g. already cancelled) or already departed' })
+  cancel(@Param('id') flightId: string, @CurrentUser('id') moderatorId: string): Promise<FlightResponseDto> {
+    return this.flightsService.cancel(flightId, moderatorId);
   }
 
   // POST /api/flights/:id/cabins (FLT-04)

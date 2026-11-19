@@ -25,6 +25,7 @@ import {
 import { CreateCabinDto, CreateFlightDto } from './dto/create-flight.dto.js';
 import { FlightResponseDto } from './dto/flight-response.dto.js';
 import { UpdateCabinDto } from './dto/update-cabin.dto.js';
+import { UpdateFlightDto } from './dto/update-flight.dto.js';
 import { localDayBoundsUtc, localToUtc, utcToLocal } from './flight-time.js';
 
 type AirportCityRecord = { _id: Types.ObjectId; cityId: Types.ObjectId };
@@ -67,12 +68,7 @@ export class FlightsService {
     const zones = await this.airportTimeZones(dto.departureAirportId, dto.arrivalAirportId);
     const departureAt = localToUtc(dto.departureLocalTime, zones.departure, 'Departure time');
     const arrivalAt = localToUtc(dto.arrivalLocalTime, zones.arrival, 'Arrival time');
-    if (arrivalAt <= departureAt) {
-      throw new BadRequestException('Arrival must be after departure (compared in UTC).');
-    }
-    if (departureAt <= new Date()) {
-      throw new BadRequestException('Departure must be in the future.');
-    }
+    assertSchedule(departureAt, arrivalAt);
 
     await this.assertNumberFreeOnLocalDate(airline._id, dto.number, departureAt, zones.departure);
 
@@ -94,6 +90,109 @@ export class FlightsService {
     }
 
     return toFlightResponse(flight, zones.departure, zones.arrival);
+  }
+
+  /**
+   * FLT-05: change departure/arrival times (and airports, until the first seat is held or booked).
+   * Same conversion and checks as on creation; a side whose local time isn't sent keeps its stored UTC time.
+   */
+  async update(flightId: string, moderatorId: string, dto: UpdateFlightDto): Promise<FlightResponseDto> {
+    if (Object.values(dto).every((value) => value === undefined)) {
+      throw new BadRequestException('Send at least one of departureAirportId, departureLocalTime, arrivalAirportId or arrivalLocalTime.');
+    }
+    const flight = await this.findEditableFlight(flightId, moderatorId);
+
+    const departureAirportId = dto.departureAirportId ?? flight.departure.airportId.toString();
+    const arrivalAirportId = dto.arrivalAirportId ?? flight.arrival.airportId.toString();
+    const departureAirportChanged = departureAirportId !== flight.departure.airportId.toString();
+    const arrivalAirportChanged = arrivalAirportId !== flight.arrival.airportId.toString();
+    const airportsChanged = departureAirportChanged || arrivalAirportChanged;
+
+    if (departureAirportId === arrivalAirportId) {
+      throw new BadRequestException('Departure and arrival airports must be different.');
+    }
+    // A local time only means something together with its airport
+    if (departureAirportChanged && !dto.departureLocalTime) {
+      throw new BadRequestException('Send departureLocalTime when changing the departure airport.');
+    }
+    if (arrivalAirportChanged && !dto.arrivalLocalTime) {
+      throw new BadRequestException('Send arrivalLocalTime when changing the arrival airport.');
+    }
+    if (airportsChanged && hasTakenSeat(flight)) {
+      throw new ConflictException("Airports can't change once a seat on this flight is held or booked.");
+    }
+
+    const zones = await this.airportTimeZones(departureAirportId, arrivalAirportId);
+    const departureAt = dto.departureLocalTime
+      ? localToUtc(dto.departureLocalTime, zones.departure, 'Departure time')
+      : flight.departure.timestamp;
+    const arrivalAt = dto.arrivalLocalTime
+      ? localToUtc(dto.arrivalLocalTime, zones.arrival, 'Arrival time')
+      : flight.arrival.timestamp;
+    assertSchedule(departureAt, arrivalAt);
+
+    await this.assertNumberFreeOnLocalDate(flight.airlineId, flight.number, departureAt, zones.departure, flight._id);
+
+    let updated: FlightRecord | null;
+    try {
+      updated = await this.flightModel
+        .findOneAndUpdate(
+          {
+            ...editableFilter(flight._id),
+            // Atomic with the write: still no held/booked seat if the airports change
+            ...(airportsChanged ? { cabins: { $not: { $elemMatch: { 'seats.availability': { $in: TAKEN_SEATS } } } } } : {}),
+          },
+          {
+            $set: {
+              departure: { airportId: new Types.ObjectId(departureAirportId), timestamp: departureAt },
+              arrival: { airportId: new Types.ObjectId(arrivalAirportId), timestamp: arrivalAt },
+            },
+          },
+          { returnDocument: 'after', runValidators: true },
+        )
+        .lean<FlightRecord>()
+        .exec();
+    } catch (error) {
+      if (isDuplicateKeyError(error)) throw this.duplicateNumberError(flight.number, departureAt, zones.departure);
+      throw error;
+    }
+    if (!updated) throw flightChangedError();
+
+    // TODO(FLT-05): if a time changed, send an in-app notification to passengers with Confirmed bookings
+    // (GEN-01/NEW-02; notifications are not built yet).
+
+    return toFlightResponse(updated, zones.departure, zones.arrival);
+  }
+
+  /**
+   * FLT-06: cancel a Scheduled flight. In one atomic update the status becomes cancelled (so search hides it) and
+   * every held seat goes back to available. Booked seats stay booked, as a record of the cancelled bookings.
+   */
+  async cancel(flightId: string, moderatorId: string): Promise<FlightResponseDto> {
+    const flight = await this.findEditableFlight(flightId, moderatorId);
+
+    const cancelled = await this.flightModel
+      .findOneAndUpdate(
+        editableFilter(flight._id),
+        {
+          $set: {
+            status: FlightStatus.CANCELLED,
+            // $[] = every cabin, $[held] = only the seats matched by the array filter below
+            'cabins.$[].seats.$[held].availability': SeatAvailability.AVAILABLE,
+          },
+        },
+        { returnDocument: 'after', arrayFilters: [{ 'held.availability': SeatAvailability.HELD }] },
+      )
+      .lean<FlightRecord>()
+      .exec();
+    if (!cancelled) throw flightChangedError();
+
+    // TODO(FLT-06): when the FlightBooking schema is ready, in the same flow:
+    //  - set this flight's Confirmed bookings to Cancelled with a 100% refund (PAY-03),
+    //  - expire its Pending Payment bookings (their seat holds were released above),
+    //  - send passengers an in-app notification (GEN-01/NEW-02).
+
+    return this.toResponse(cancelled);
   }
 
   // FLT-04: add a cabin type the flight doesn't have yet (same seat generation and row rules as on creation)
@@ -206,7 +305,7 @@ export class FlightsService {
   }
 
   /**
-   * FLT-04/FLT-05: the flight exists (404), belongs to the moderator's airline (403/404, checked before revealing its
+   * FLT-04/05/06: the flight exists (404), belongs to the moderator's airline (403/404, checked before revealing its
    * state), is Scheduled and hasn't departed yet (409).
    */
   private async findEditableFlight(flightId: string, moderatorId: string): Promise<FlightRecord> {
@@ -261,10 +360,18 @@ export class FlightsService {
 
   // FLT-03: one flight number per airline per local departure date (local to the departure airport).
   // Cancelled flights don't count, so a cancelled flight's number can be reused that day.
-  private async assertNumberFreeOnLocalDate(airlineId: Types.ObjectId, number: string, departureAt: Date, timeZone: string) {
+  // When editing (FLT-05), the flight being edited is excluded so it doesn't clash with itself.
+  private async assertNumberFreeOnLocalDate(
+    airlineId: Types.ObjectId,
+    number: string,
+    departureAt: Date,
+    timeZone: string,
+    excludeFlightId?: Types.ObjectId,
+  ) {
     const { start, end } = localDayBoundsUtc(departureAt, timeZone);
     const taken = await this.flightModel
       .exists({
+        ...(excludeFlightId ? { _id: { $ne: excludeFlightId } } : {}),
         airlineId,
         number,
         status: { $ne: FlightStatus.CANCELLED },
@@ -278,6 +385,21 @@ export class FlightsService {
     const localDate = utcToLocal(departureAt, timeZone).slice(0, 10);
     return new ConflictException(`This airline already has flight ${number} departing on ${localDate}.`);
   }
+}
+
+// FLT-03/FLT-05: arrival strictly after departure (both UTC), and departure still in the future
+function assertSchedule(departureAt: Date, arrivalAt: Date): void {
+  if (arrivalAt <= departureAt) {
+    throw new BadRequestException('Arrival must be after departure (compared in UTC).');
+  }
+  if (departureAt <= new Date()) {
+    throw new BadRequestException('Departure must be in the future.');
+  }
+}
+
+// FLT-05: true once any seat in any cabin is held or booked
+function hasTakenSeat(flight: FlightRecord): boolean {
+  return flight.cabins.some((cabin) => cabin.seats.some((seat) => TAKEN_SEATS.includes(seat.availability)));
 }
 
 // Only a Scheduled flight that hasn't departed can be changed (FLT-05, FLT-30)
