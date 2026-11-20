@@ -1,0 +1,604 @@
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-09
+AGENT: ChatGPT Work
+
+------------------------------------------------
+
+PROMPT: Please register the schemas in database.module.ts and the database in app.module.ts.
+
+------------------------------------------------
+
+RESPONSE: Registered the MongoDB connection and all 28 standalone models. AppModule now loads the database config and imports DatabaseModule; that module connects through MONGODB_URI, registers the models with forFeature, and exports MongooseModule for other modules.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-09
+AGENT: ChatGPT Work
+
+------------------------------------------------
+
+PROMPT: Please go through my database schemas and make sure that the names of collections, fields, etc. are standardised (within our application, and with other applications). Do not change anything other than the names.
+
+------------------------------------------------
+
+RESPONSE: Standardized schema naming across the application:
+
+- ObjectId references now use ...Id, and reference arrays use ...Ids.
+- Image arrays consistently use imageUrls.
+- Corrected the CENCELLED enum member name to CANCELLED; its stored value remains cancelled.
+- Kept the existing collection names, which already use plural snake_case.
+
+Only schema files were edited. No tests were run. Because field names are persisted in MongoDB, existing documents will need a names-only data migration before the renamed fields are used with existing data.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-11
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: Help me add necessary indices that would make queries run faster in my database.
+
+------------------------------------------------
+
+RESPONSE: Added three indexes to support common access patterns:
+
+- itinerary.schema.ts: owner and visibility filtering with newest-updated sorting; visibility and start-date filtering.
+- expense.schema.ts: a user’s expenses sorted by creation date.
+- blog-post.schema.ts: lookup by post for counting or listing likes.
+
+I didn’t run tests. There are no query implementations in the backend yet, so these target access patterns implied by the schemas; confirm them against real query plans as those queries are added. MongoDB creates schema-defined indexes when index creation is enabled.
+
+================================================
+
+STUDENT: mahmoud mohamed
+DATE: 2026-11-13
+AGENT: Copilot SDK in VS Code
+
+------------------------------------------------
+
+PROMPT: Add the shared image-upload foundation from GEN-08: JPG/PNG validation, a 5 MB limit, server-side storage, URL responses, static serving, environment configuration, and record the work in AI_PROMPTS.txt.
+
+------------------------------------------------
+
+RESPONSE: Added a NestJS upload module with POST /api/upload/image. It stores uniquely named JPG/PNG files under backend/uploads, rejects files over 5 MB or with unsupported MIME types, returns a BASE_URL-based URL, and serves stored files from /uploads. Registered the module in AppModule, added BASE_URL to .env.example, ignored backend/uploads, and documented the prompt here. Entity-specific authorization and per-post/activity/hotel image-count enforcement must be added to those entity endpoints.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: How does this backend manage file uploads?
+
+------------------------------------------------
+
+RESPONSE: The backend uses NestJS’s Multer integration for a single image-upload endpoint:
+
+- **Endpoint:** `POST /api/upload/image`, with a `multipart/form-data` field named `file` (`upload.controller.ts`).
+- **Validation:** Only JPEG and PNG MIME types are accepted, and each file is limited to 5 MB (`image-upload.options.ts`).
+- **Storage:** Files are written to `./uploads` with a random UUID filename and the original extension. The directory is ignored by Git (`image-upload.options.ts`, `.gitignore`).
+- **Serving and response:** The app exposes that directory under `/uploads`; after a successful upload, the endpoint returns `{ "url": "…" }`, built from `BASE_URL` (default `http://localhost:3000`) (`main.ts`, `upload.controller.ts`).
+
+The upload module is registered in the app. The current endpoint is generic: it doesn’t associate files with a specific post, activity, hotel, or airline, and the documented per-entity image-count limits aren’t enforced here.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: How easy would it be to switch from this to Cloudinary?
+
+------------------------------------------------
+
+RESPONSE: It should be a **small, localized backend change**. Upload handling is already behind one controller and one Multer configuration, so the main change would be replacing local disk storage in `image-upload.options.ts` with a Cloudinary upload, then returning Cloudinary’s `secure_url` from `upload.controller.ts`.
+
+The endpoint can likely keep accepting the same `multipart/form-data` request, so the frontend should need little or no change if it already uses the returned URL. You’d also add Cloudinary credentials to environment configuration and remove or stop using the local `/uploads` static serving.
+
+The main effort is operational: create/configure a Cloudinary account, set credentials securely in each environment, and decide how existing locally stored images will be migrated. Also, entity-specific authorization and image-count limits are not currently enforced, so switching storage alone wouldn’t add those safeguards.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: I added the connection string to .env. Please perform the necessary changes to make it connect to Cloudinary instead of ./uploads. After that, provide a brief guide in /docs to my other teammates to make them understand how they would use the upload feature in their API endpoints.
+
+------------------------------------------------
+
+RESPONSE: Replaced Multer disk storage and local static file serving with in-memory uploads to Cloudinary. Kept POST /api/upload/image, JPG/PNG filtering, the 5 MB limit, and the { url } response shape; added an exported UploadService so entity modules can reuse the shared upload flow. Added docs/image-uploads.md with integration guidance and updated .env.example with the CLOUDINARY_URL name and format. Entity authorization and image-count enforcement remain responsibilities of the relevant entity endpoints.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-13
+AGENT: Codex
+
+------------------------------------------------
+
+PROMPT: Can you read the cross-cutting rules in the functional requirements file and make sure that the file/image uploads follow them?
+
+------------------------------------------------
+
+RESPONSE: Reviewed GEN-08 and GEN-13. The shared upload service now checks the actual JPG/PNG file signature in addition to the declared MIME type, and the blog post image-count validator now has the correct five-image error message. Confirmed the blog post and hotel schemas cap image arrays at five and airline logoUrl is a single field. Updated docs/image-uploads.md to describe these controls and the current gaps: no activity image field/API exists, and generic uploads cannot enforce entity ownership/count limits. No auth guards or entity API controllers currently exist in this backend, so those checks must be applied when those feature endpoints are implemented.
+
+================================================
+
+STUDENT: Rushdy
+DATE: 2026-11-19
+AGENT: Claude Code (Claude Opus 5.5)
+
+------------------------------------------------
+
+PROMPT: Implement every endpoint assigned to me (Rushdy.md): BLG-01 to BLG-10, BLG-12 and BLG-13, without touching other teammates' files.
+
+------------------------------------------------
+
+RESPONSE: Added the blog module in backend/src/blog/ (controllers for /api/posts, /api/comments, /api/tags and /api/authors; BlogService, PublicBlogService, CommentsService, LikesService; DTOs with class-validator and Swagger decorators; unit tests) and registered BlogModule in app.module.ts. Used the existing schemas, global JWT guard, @CurrentUser/@Public decorators and the shared UploadService unchanged. Published posts by deactivated authors are hidden and their comments show as "Deleted user" (ACC-12); Archived posts are treated as hidden (GEN-10). Added GET /api/posts/mine/:id so an author can open a draft for editing. I reviewed the generated code, and the build, lint and all unit tests pass.
+
+DATE: 2026-11-20
+STUDENT: Not specified
+AGENT: Codex
+REQUIREMENTS: ACC-07a, ACC-13
+PROMPT: Implement the comment in backend/src/auth/auth.service.ts:138 to force a password change on next login once the user schema has a flag for it. Remove the comment and keep implementation and checks focused.
+RESPONSE: Added a mustChangePassword schema flag and optional validated newPassword login field. Flagged accounts must replace their temporary password before receiving a session; password replacement revokes old sessions, and password reset/change clears the flag. Added focused login regression coverage.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-07, GEN-01-B
+PROMPT: check why forgot password don't send the link
+RESPONSE: Traced the reset-email flow and checked SMTP configuration without exposing credentials. The system DNS resolver fails to resolve smtp.gmail.com (EAI_AGAIN / DNS server failure). Resolving through 1.1.1.1 allows SMTP connection and authentication to succeed; no email was sent during verification. MailService catches delivery failures and forgotPassword intentionally returns its generic acknowledgement. All 40 focused auth/mail tests passed. Recommended fixing the local DNS configuration and restarting the backend; no application code changes were needed.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-07a, ACC-09, ACC-11, ACC-12, GEN-07
+PROMPT: create the four missing apis, and look at their description in the functional-requirements.csv. The supplied image identifies POST /api/admin/users/:id/reset-password and GET, PATCH, DELETE /api/users/me.
+RESPONSE: Added admin and users feature modules with cookie authentication, role/ownership enforcement, validated DTOs and Swagger documentation. Admin resets hash a temporary password, require its replacement at next login, invalidate access/refresh tokens and reset links, and record an audit log in a transaction. Profile edits accept only name, E.164 phone number and an existing preferred currency. Confirmed self-deactivation is restricted to registered users, blocks confirmed bookings whose travel/stay has not ended, anonymizes the retained author name, archives published posts, makes public itineraries private, revokes credentials and clears cookies after commit. Added service, HTTP, Swagger and authentication regression coverage. All 148 unit/API tests and the production build passed.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-07a, ACC-09, ACC-11, ACC-12
+PROMPT: Use the @CurrentUser() decorator. UserRole.USER means registered user; guests access routes through the @Public() decorator only.
+RESPONSE: Confirmed all four account handlers already receive the authenticated identity through @CurrentUser() on controller parameters and pass it to their services. Documented that UserRole.USER is a registered user and guests have no role. Extended HTTP coverage to check that every authenticated role can read/edit its own profile, both moderator roles cannot self-deactivate or reset passwords, and unauthenticated requests are rejected by all four private endpoints.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-09, ACC-11, ACC-12 (user-specified access restriction)
+PROMPT: all the Me api should not be called by anyone not registered or not the current user
+RESPONSE: Restricted all /users/me operations and GET /auth/me to UserRole.USER using @Roles, with matching service checks. Kept identity sourced from @CurrentUser() exclusively. Updated role and ownership tests to cover guests, unknown accounts, staff roles, registered users, forged identity fields and attempts to address another account. This follows the user's explicit restriction over the CSV's broader authenticated-role profile access.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-09, ACC-11, ACC-12
+PROMPT: what if a moderator want to get his profile
+RESPONSE: Clarified that profile access is based on the signed-in identity rather than the customer role. Removed UserRole.USER restrictions from GET /users/me, PATCH /users/me and GET /auth/me, including corresponding service checks. Authentication remains required and @CurrentUser() remains the only source of the account id. Kept UserRole.USER on self-deactivation as required by ACC-12. Updated service and HTTP tests to allow moderators and admins to read/edit their own profile while continuing to reject guests, unknown accounts and supplied target identities.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-01, ACC-02, ACC-07, ACC-07a, ACC-09, ACC-11, ACC-12, ACC-19, GEN-01-B, GEN-07
+PROMPT: add multiple commits for change made
+RESPONSE: Reviewed the pending changes and organized them into separate conventional commits for authentication/email recovery, admin password resets, self-service profiles and deactivation, Swagger display, and the AI prompt log. Kept the current feature branch and excluded local environment secrets and generated files.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: HTL-01, FLT-01, GEN-07, GEN-08, GEN-13
+PROMPT: add those and commit. The attached endpoint table identifies POST /api/hotels, PATCH /api/hotels/:id, POST /api/airlines, GET /api/airlines/:id and PATCH /api/airlines/:id.
+RESPONSE: Added hotel and airline feature modules with validated profile DTOs, Swagger documentation and current-user identity. Creation is admin-only and uses an existing matching moderator, with unique provider assignment enforced by the database; edits require the assigned moderator of the matching type. Public airline reads return only active profiles and omit moderator/private configuration. Hotel locations are checked against city/country reference data; hotel photos and amenities enforce schema limits. Aligned hotel logo/checking-policy requirements and default airline bag policy with independent profile creation, and extended transactional admin audit logs for provider creation. Added service, HTTP and real-schema regression coverage. All 271 tests, the production build and focused lint passed before committing.
+
+================================================
+Date: 2026-11-18
+Student: Eyad
+Tool: Claude Code
+Related Requirement: setup (build fix)
+Prompt:
+Repair backend/package-lock.json (invalid JSON after a merge) and merge the two half-pasted bootstrap() functions in main.ts into one, adding Swagger UI at /api/docs with cookie auth.
+How the output was used:
+Reviewed the diff, build and tests passed (59/59), opened as PR #13 into dev.
+================================================
+
+================================================
+Date: 2026-11-18
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02 (step 1); FLT-08, FLT-09 planned as step 2
+Prompt:
+Start steps 1 and 2: the flights module with GET /api/airports (FLT-02), then PUT /api/airlines/:id/baggage-policy (FLT-08) and /cancellation-policy (FLT-09), including the moderator ownership check. One step per commit, conventional messages citing the requirement IDs. Show the plan first, then the diff before each commit. Don't touch shared files (schemas, main.ts, app.module.ts beyond registering FlightsModule).
+How the output was used:
+Reviewed the plan, then step 1 only: a public, paginated (10 per page) airports list with search by IATA prefix or name, joined to city and country. The time zone comes from the country only when it has a single zone, with a TODO until Airport.timeZone exists. Reviewed the diff; build, lint and tests passed (64/64, 5 new), plus a mocked smoke test of the route and Swagger. Step 2 not started yet.
+================================================
+
+================================================
+Date: 2026-11-18
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-08, FLT-09 (step 2)
+Prompt:
+Go ahead with step 2 only: PUT /api/airlines/:id/baggage-policy (FLT-08) and /cancellation-policy (FLT-09) with the moderator ownership check, as in your plan. Build, test and lint, then show me the diff before committing. Add the AI_PROMPTS.txt entry in the same commit. Don't push.
+How the output was used:
+Reviewed the diff and asked for refundPercentage to be whole numbers only (0-100, @IsInt) instead of allowing 2 decimals. Moderator-only endpoints with a reusable ownership check (404 for a missing or malformed airline id, 403 for another moderator's airline); the update also filters on moderatorId. Baggage price is whole cents > 0. Cancellation tiers with unique thresholds are mapped onto the existing startDay/endDay schema, so no schema change was needed. Build, lint and tests passed (82/82, 18 new), plus a mocked smoke test through the real JWT and Roles guards. Committed and pushed.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02
+Prompt:
+Merge origin/dev into feature/FLT-flights-module; if anything conflicts, stop and show me. Then fix(flights): read airport time zone from city (FLT-02): use City.timeZone, remove the country fallback and its TODO, update the tests. Build, test, lint, show me the diff before committing.
+How the output was used:
+The merge had no conflicts (dev #15 moved the time zone from Country to City). GET /api/airports now returns the airport's city timeZone, or null if the city has none; the single-zone country fallback and its TODO are removed. Tests updated: a multi-zone country (US) city now gets its own zone, and a city without a zone returns null. Reviewed the diff; build, lint and tests passed (83/83).
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-03, FLT-04 (step 3)
+Prompt:
+Start step 3: POST /api/flights (FLT-03). Add luxon and @types/luxon, keeping the lockfile change to just those packages. Times arrive as local airport time (City.timeZone) and are stored in UTC; 400 if a city has no time zone. Reject same airports, arrival not after departure, departure in the past, inactive airline, airline not owned by the moderator, and a duplicate flight number for the same airline on the same local departure date (checked in the service). Cabins: take seat rows and a column layout (e.g. "ABC-DEF") and generate seats[] with window/middle/aisle types, all available; at least one cabin; per-seat model, no schema changes.
+How the output was used:
+Reviewed the diff and asked for cancelled flights to be excluded from the duplicate flight-number check (with a test). Added luxon 3.7.2 and @types/luxon 3.7.6 (lockfile diff limited to those two packages; npm ci passes). POST /api/flights converts local times with luxon and also rejects impossible dates and times skipped by daylight saving. The duplicate check covers the whole local departure day and ignores cancelled flights; a unique-index race returns 409. Cabins take firstRow/lastRow plus a layout; seats are generated with outer letters as window and letters next to "-" as aisle, and cabin types and row ranges must not overlap. Build, lint and tests passed (129/129, 46 new), plus a mocked smoke test through the real guards and a check against the real Flight schema validators. Committed and pushed.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-04, FLT-05 (step 4)
+Prompt:
+Start step 4: POST /api/flights/:id/cabins and PATCH /api/flights/:id/cabins/:cabinId (FLT-04, FLT-05), using :cabinId as the cabin name. POST adds a cabin type not already on the flight (same seat generation and row-overlap rules as POST /flights). PATCH can change seatPrice and the row range; adding rows is fine, removing rows is rejected if any seat in them is held or booked. Only Scheduled flights, owner moderator only. Existing bookings keep their agreed price.
+How the output was used:
+Reviewed the diff. Both endpoints check flight exists (404), ownership (403), Scheduled and not yet departed (409). POST pushes the generated cabin in one update guarded on "type not on the flight and no seats in those rows". PATCH runs one atomic update pipeline that only matches if no seat in the removed rows is held or booked and no other cabin uses the new rows; it keeps in-range seats with their current availability, adds new rows using the cabin's existing layout and sets the price. Build, lint and tests passed (152/152, 23 new). Also verified against a throwaway MongoDB 8.0 Docker container: 31 integration checks including simulated races (a seat held between read and write is never removed) and an HTTP smoke test through the real guards.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-05, FLT-06 (step 5)
+Prompt:
+Go: step 5, PATCH /api/flights/:id (FLT-05) and POST /api/flights/:id/cancel (FLT-06). PATCH: change departure/arrival local times (same conversion and checks as POST /flights, including the duplicate-number check). Airports can't change once any seat is held or booked. Scheduled, not departed, owner only. Cancel: owner only, Scheduled and not departed; set status cancelled and release held seats back to available, atomically. Leave TODO(FLT-06) for cancelling Confirmed bookings with a 100% refund and notifications, since the booking schema isn't ready.
+How the output was used:
+Reviewed the diff and approved a real-database check. PATCH reuses the creation checks (shared assertSchedule) and re-runs the duplicate-number check excluding the flight itself; a side whose local time isn't sent keeps its stored UTC time, and changing an airport also needs that side's local time. An airport change is refused with 409 once any seat is held or booked, checked up front and again inside the update filter. Cancel is one atomic update that sets status cancelled and resets every held seat to available via an array filter. TODO(FLT-05) marks the time-change notification and TODO(FLT-06) the booking cancellation/refund/notification. Build, lint and tests passed (171/171, 19 new), plus an offline check that Mongoose casts both update shapes against the real Flight schema. Verified against a throwaway MongoDB 8.0 Docker container (existing image, removed afterwards): 22 integration checks passed, including local-to-UTC edits, the duplicate-number check on a new date (ignoring the flight itself), the airport lock with a held seat, a simulated race where a seat was booked between read and write (airport change refused, nothing written), cancel releasing held seats in every cabin while booked seats stay booked, a second cancel and a cancel race both returning 409, and reuse of a cancelled flight number. Committed and pushed.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-19, FLT-21, FLT-22, FLT-25, FLT-29
+Prompt:
+I'm explicitly approving the shared schema change now: on feature/FLT-flights-module, change backend/src/database/schemas/expense.schema.ts exactly as in my team message. Booking: payment optional (default null), add policiesAcceptedAt (Date, default null). FlightBooking: replace passenger with reference (unique), segments [FlightSegment] 1-2, passengers [FlightPassenger] >=1, fareTotal, baggageFee (default 0), holdExpiresAt (default null). FlightSegment {flightId, cabinName, seatPrice, seats[{passengerIndex,row,column}]}, FlightPassenger {fullName, dateOfBirth, type, passportNumber, extraBagWeights[]}, all _id:false. Indexes: reference unique; segments.flightId+status; status+holdExpiresAt. Change nothing else. Tell me if any existing code uses the old passenger field or relies on payment being required.
+How the output was used:
+Reviewed the diff and accepted it. Money fields are integer cents, passenger type is an adult/child/infant enum, segment seats default to [] (infants take no seat) and seat columns are stored uppercase as in the Flight schema. The reference unique index is partial (only documents with a string reference), because hotel bookings, activities and transports share the expenses collection and would otherwise collide on a missing reference; I accepted that change. No existing code used the old passenger field or relied on payment being required. Build, lint and tests passed (171/171), plus an offline Mongoose check of defaults, the 1-2 segment and >=1 passenger rules, rejection of the old passenger field, and the three indexes. While checking, found that registering Booking as an Expense discriminator throws on the unchanged schema too (Booking inherits its own expenseType field), to be confirmed against a real database.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-19, FLT-21, FLT-22, FLT-25, FLT-29 (app startup fix)
+Prompt:
+Approved: register HotelBooking and FlightBooking directly under Expense (hotel_booking, flight_booking), Booking stays as a shared base class only, plus your two @Prop removals. One commit on fix/booking-discriminator: "fix(db): make discriminator models registrable so the app starts". Before committing, prove it on a fresh throwaway container: the app starts with no errors, GET /api/airports returns 200, and a FlightBooking and a HotelBooking can each be saved and read back. Remove the container after. Don't touch Payment.amountTotal; just list it in the PR body as a known issue for the payments owner. Show me the diff, then commit, push, open a PR into dev explaining the 3 crashes in plain words, and merge the branch into feature/FLT-flights-module (show me if anything conflicts). Then push feature/FLT-flights-module.
+How the output was used:
+Starting the app against a throwaway MongoDB 8.0 container (existing image, removed afterwards) confirmed it crashed on dev before listening, with three Mongoose errors: subtypes inherited the expenseType @Prop from Expense, Airline inherited the providerType @Prop from Provider, and HotelBooking/FlightBooking were nested discriminators of Booking, which Mongoose does not support. Reviewed the diff and approved the fix: the two key fields are no longer @Props, HotelBooking and FlightBooking are registered directly under Expense as hotel_booking/flight_booking, Booking is only a shared base class, and the hand-written nested providers were removed. Verified on a fresh container: the app starts with no errors, both booking types save and read back through the app's own models, and with the fix applied to the flights branch GET /api/airports returns 200 and the new FlightBooking indexes are created. Build, lint and tests passed (59/59 on dev, 171/171 after merging). Opened PR #17 into dev, listing the Payment.amountTotal null-validation bug as a known issue for the payments owner, and merged the fix into feature/FLT-flights-module without conflicts.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-19, FLT-21, FLT-22 (step 6)
+Prompt:
+Step 6: POST /api/flight-bookings (FLT-19, FLT-21, FLT-22), logged-in users only. Use the FlightBooking model. Body: segments (1 = one-way, 2 = round trip: flightId + cabinName each) and passengers (fullName, dateOfBirth, passportNumber, extraBagWeights[]). Rules: passenger type from DOB at outbound departure (adult 12+, child 2-11, infant <2); at least 1 adult, infants <= adults, unique passports. Round trip: return is the reverse route and departs after the outbound arrives. Flights scheduled, not departed, airline active. Price: seatPrice x seated passengers per segment + 10% per infant, extra bags count <= airline maxExtraBagCount, each <= flight maxBagWeight, fee = priceExtraBag x bags; integer cents. Seat hold: pick n available seats per segment (keep the group in one row if possible), mark them held in one guarded findOneAndUpdate that only matches if those exact seats are still available; retry once with new seats on a lost race, else 409. If segment 2 fails, release segment 1. If saving the booking fails, release all. Save status pending payment, holdExpiresAt = now + 10 min, unique reference, name like "MS 123 CAI -> JFK", cost = fareTotal + baggageFee. Expired holds: release seats and set status expired, both lazily (before creating and listing) and with a sweep every minute. Response: the booking summary. Don't reject unverified users. Put pure logic (types, pricing, seat picking) in separate functions with unit tests. Verify the hold and the race on a throwaway Docker mongo:8.0 container, removed afterwards. Show me the diff before committing.
+Follow-up before committing: up to 5 hold retries instead of 1, picking randomly among available seats on each retry (still keeping a group in one row when possible); rerun the 12-requests-for-4-seats race (never oversell, all 4 seats should normally get booked). Add @Roles(UserRole.USER) and a test that a moderator gets 403.
+How the output was used:
+Reviewed the diff and asked for the follow-up changes above. New flight-bookings module (imported by FlightsModule, so app.module.ts is unchanged): pure rules in booking-rules.ts (age and passenger type on the local outbound departure date, passenger mix, passports, integer-cent pricing with the 10% infant fare, baggage limits, seat picking, reference, name), the service (validate, price, hold per segment with a guarded findOneAndUpdate, re-read and retry up to 5 times with random seats, release on later failure, save with a unique reference retried on a clash), a guarded expiry that sets Expired before releasing seats (lazy before creating, plus a setInterval sweep every minute), Swagger-documented DTOs and controller restricted to registered users. Kept: bags charged on each flight of a round trip, the request size limits, and "expire before listing" ready for the list endpoint. The real-database check found a Mongoose 9 bug that rewrites an array filter mixing a field with $or, so the seat state is repeated inside each $or branch. Build, lint and tests passed (237/237, 66 new). Verified on a throwaway MongoDB 8.0 container (existing image, removed afterwards), 28 checks passing on three runs: the 12-for-4 race booked all 4 seats in 60/60 rounds and never oversold; groups never oversold; a forced lost race retried onto another seat; always losing gave 409 after 1 + 5 attempts; return-flight failure and save failure released every held seat; duplicate references were retried; the sweep and the lazy expiry released seats exactly once. Over HTTP through the real guards: no cookie 401, moderator 403, bad body 400, unverified user 201 with the summary.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-25 (step 7)
+Prompt:
+Step 7: GET /api/flight-bookings and GET /api/flight-bookings/:id (FLT-25), users only. List: expire overdue holds for this user first, then return their flight bookings grouped as upcoming, past and cancelled (expired counts as cancelled), 10 per page per group, newest first. Upcoming/past by the outbound flight's departure time. By id: 404 if it doesn't exist or isn't theirs (never 403). Same summary shape as POST. Only show the reference once Confirmed. Build, test, lint, show me the diff before committing.
+Follow-up: run the real-database check on a throwaway mongo:8.0 container (removed after); if it passes, commit and push.
+How the output was used:
+Reviewed the diff. The list is one aggregation (booking-list.ts): it matches the user's flight bookings, looks up the outbound flight's departure time, puts each booking in cancelled (Cancelled or Expired), upcoming (departs after now) or past, and returns one page of 10 per group (separate upcomingPage/pastPage/cancelledPage) newest first, with totals. Details filter on the booking id and the user id, so another user's booking is a plain 404. Overdue holds are expired for the user before both. The reference is null until the booking is Confirmed (also in the POST response); it stays visible for Completed and Cancelled. @Roles(UserRole.USER) moved to the controller so all booking endpoints are users only. Build, lint and tests passed (254/254). Verified on a throwaway MongoDB 8.0 container (existing image, removed afterwards), 13 checks: 12 upcoming paged 10 + 2 with no overlap, past and cancelled groups newest first, an overdue hold expired by the list call with its seat released, other users' and hotel bookings never listed, reference visibility, empty groups, and 404 for another user's, unknown and malformed ids. Over HTTP through the real guards: user 200, invalid page 400, moderator 403 on both endpoints, unknown booking 404, no cookie 401.
+================================================
+
+================================================
+Date: 2026-11-19
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-29 (step 8)
+Prompt:
+Step 8: GET /api/flights/:id/bookings and GET /api/flights/:id/passengers/export (FLT-29), moderator of that flight's airline only (404 unknown flight, 403 not your airline). Bookings: the flight's Confirmed and Cancelled bookings (reference, status, cabin, passenger names and types, seats), paginated 10 per page, plus seats remaining per cabin (available seats count). Exclude pending payment and expired. Export: CSV of the same passengers (reference, passenger name, type, cabin, seat, extra bags, status). No passport numbers. Neutralise cells starting with = + - @ or tab. Content-Type text/csv with a filename. Verify on a throwaway container too. Show me the diff before committing.
+How the output was used:
+Reviewed the diff and kept the three proposed choices: the "Extra bags" CSV column is the bag count, the file starts with a UTF-8 BOM for Excel, and cells starting with a carriage return are neutralised too. Pure helpers in flights/passenger-manifest.ts (per-flight cabin and seats, CSV rows, formula neutralising, RFC 4180 quoting, CRLF, filename from the local departure date) and FlightManifestService (404 unknown/malformed flight, 403 via the airline's moderator, only the needed booking fields read so passport numbers never leave the database, 10 per page newest first, all rows oldest first for the export). Two GET routes on the moderator-only FlightsController. Build, lint and tests passed (280/280, 26 new). Verified on a throwaway MongoDB 8.0 container (existing image, removed afterwards) with real bookings made through POST, 23 checks over HTTP: only Confirmed/Cancelled listed and exported, paging 10 + 2 newest first, infant without seat, return flight shows its own seat, seats remaining match the database, CSV headers and filename, =/+/-/@/tab cells neutralised, no passport numbers, other airline's moderator and users 403, unknown or malformed flight 404, no cookie 401, page=0 400.
+================================================
+
+================================================
+Date: 2026-11-20
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-19, FLT-21, FLT-25, FLT-29 (merge of origin/dev)
+Prompt:
+Merge origin/dev into feature/FLT-flights-module. Resolve app.module.ts (keep both modules), database.module.ts (dev's formatting) and provider.schema.ts (dev's version). Switch UserRole.MODERATOR to UserRole.AIRLINE_MODERATOR in my files. expense.schema.ts: take dev's Booking @Schema options and its removal of bookingType, and keep my FlightBooking fields (reference, segments, passengers, fareTotal, baggageFee, holdExpiresAt, and the three indexes) in place of dev's single flightId and old passenger field. First grep dev's code for uses of FlightBooking.flightId, .passenger or bookingType. Anything of mine that filters or sets bookingType must use expenseType: 'flight_booking' instead. Then build, test, lint, and a quick real-database check on a throwaway mongo:8.0 container. Show me the resolution and test results before committing the merge.
+How the output was used:
+Reviewed the resolution and approved it. Nothing on dev used FlightBooking.flightId, .passenger or bookingType. Booking now has its own schema options and no bookingType; FlightBooking keeps the segments model and its indexes. booking-list and the booking service use expenseType: 'flight_booking'. Flights and airlines controllers use UserRole.AIRLINE_MODERATOR; src/auth was left as on dev (its spec still uses UserRole.MODERATOR). Tests 283/283 and lint passed; npm run build fails with 7 type errors in src/hotels/hotels.service.ts that also exist on origin/dev alone. Verified on a throwaway MongoDB 8.0 container (existing image, removed afterwards): the app starts and maps all 13 flight routes, and 13 checks passed (round-trip booking created with expenseType flight_booking and no bookingType, seat held, listed and fetched by its owner, 404 for another user, hotel booking saved as hotel_booking and not in the flight list).
+================================================
+
+================================================
+Date: 2026-11-20
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02..06, FLT-08, FLT-09, FLT-19, FLT-21, FLT-25, FLT-29 (second merge of origin/dev for PR #23)
+Prompt:
+Merge origin/dev again (PRs #20 and #21 landed after PR #23 was opened). Resolve package.json (keep luxon and cookie-parser), app.module.ts (keep all modules) and AI_PROMPTS.txt (keep both sets of entries). npm install only, no audit fix. Build, test, lint, boot on a throwaway mongo:8.0 container, list every mapped route and confirm no method+path appears twice, check /api/docs, and confirm the baggage-policy PUT and the ownership check match dev's new AirlinesModule. Stop and show me anything unexpected.
+How the output was used:
+Reviewed and committed the merge. package.json has luxon and cookie-parser once each; package-lock.json has luxon 3.7.2 once (npm 11's libc-only lock rewrite was not kept). AI_PROMPTS.txt keeps dev's entries, then mine. Tests 514/514 and lint passed. npm run build fails with 20 type errors in src/auth, src/hotels and src/users, and the app does not start (four dev files import { Connection } from 'mongoose' as a runtime import); origin/dev alone has the same errors and the same crash. Dev's AirlinesModule writes the same bagPolicy field names and checks ownership the same way (Airline.moderatorId = current user id), and its routes (POST /, GET /:id, PATCH /:id) do not overlap mine. Committed and pushed with these gaps noted in the PR, as approved.
+================================================
+
+================================================
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: None (developer documentation and branch update)
+Prompt:
+Explore this codebase and document it in CLAUDE.md. Scan the project without fixing or editing anything, then write the documentation into backend/CLAUDE.md. Then update my branch with the latest version posted on GitHub.
+How the output was used:
+Scanned the repository read-only and reviewed the drafted CLAUDE.md. Saved it as backend/CLAUDE.md, below the existing @AGENTS.md import line; it covers commands, the database module and discriminator layout, and schema conventions. Fetched origin and fast-forwarded feat/payment, which had no commits of its own, to origin/dev (65 commits). No source code was changed and no tests were run.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-01 (payments: create, retry, status)
+Prompt:
+Build the payments module with Stripe in test mode: POST /api/payments to pay for a Pending Payment booking, POST /api/payments/:id/retry to retry a failed payment, and GET /api/payments/:id for the payment status. Only store the Stripe payment id, amount, currency and status, never card details.
+How the output was used:
+Added src/payments (PaymentsController, PaymentsService, StripeService/StripeModule, DTOs) for registered users only. A Stripe PaymentIntent is created for the booking total; if the booking already has one it is reused, so a double click doesn't charge twice. Totals below 0.50 USD are rejected. For Swagger testing, testPaymentMethod (pm_card_visa / pm_card_chargeDeclined) confirms the intent with a test key only. The booking becomes Confirmed only after the backend reads back from Stripe that the exact total was paid. Retry works while the 10-minute hold lasts and the Stripe status allows it. The Payment schema in expense.schema.ts moved from Checkout Session fields to paymentIntentId, amount, currency and PaymentIntent status, plus the last failure message. Added the stripe dependency and STRIPE_SECRET_KEY to .env.example.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-01 (Stripe webhook)
+Prompt:
+Add POST /api/payments/webhook so Stripe can tell the backend when a payment succeeds or fails. Verify the Stripe signature.
+How the output was used:
+Added PaymentsWebhookController, which is public (no login or role check) and hidden from Swagger. The Stripe signature is checked against the raw request body (rawBody: true in main.ts). It returns 503 if STRIPE_WEBHOOK_SECRET is not set and 400 for a missing or invalid signature. Payment and refund events update the stored payment, booking and refund status. STRIPE_WEBHOOK_SECRET and the stripe listen command are documented in .env.example.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-02 (booking policies)
+Prompt:
+Add GET /api/bookings/:type/:id/policies to show the provider's policies for a booking, and POST /api/bookings/:type/:id/accept-policies to accept them. Payment must not be possible before the policies are accepted.
+How the output was used:
+Added BookingPoliciesController. :type is flight or hotel. Airline bookings show the cancellation tiers and baggage rules; hotel bookings show the cancellation tiers and check-in/check-out times. Accepting requires accepted: true, stores the time of acceptance, and only works on a Pending Payment booking whose hold has not expired. POST /api/payments returns 409 until the policies are accepted. Someone else's booking returns 404.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-03 (refunds)
+Prompt:
+Add GET /api/refunds/:id to show a refund's status (Pending, Refunded or Failed). Refunds follow the provider's cancellation policy.
+How the output was used:
+Added RefundsService and RefundsController. Refunds are issued through Stripe and stored; GET /api/refunds/:id reads the latest status from Stripe and falls back to the stored status if Stripe can't be reached. Webhook refund events keep the stored status in sync. The refund amount rules are in src/payments/refund-policy.ts as pure functions with unit tests (refund-policy.spec.ts). Only the owner of the booking can see the refund.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-22 (seat hold)
+Prompt:
+Add POST /api/flight-bookings/hold, as named in the endpoint table, to hold seats for 10 minutes as a Pending Payment booking.
+How the output was used:
+Added POST /api/flight-bookings/hold in flight-bookings.controller.ts; it does the same as POST /api/flight-bookings. When the hold expires, the booking's Stripe PaymentIntent is cancelled so it can no longer be paid. Added confirmPaid() so the payments module can confirm a flight booking after payment.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-23 (e-ticket)
+Prompt:
+Add GET /api/flight-bookings/:id/e-ticket to download the e-ticket as a PDF for a confirmed booking.
+How the output was used:
+Added the e-ticket endpoint and src/common/pdf/simple-pdf.ts, a small text-only PDF writer (A4, Helvetica), so no PDF library is needed. Only the owner can download it, and only once the booking is Confirmed (409 otherwise).
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-26 (cancel flight booking with refund)
+Prompt:
+Add POST /api/flight-bookings/:id/cancel so a user can cancel a confirmed booking before departure and get the refund the airline's cancellation policy allows.
+How the output was used:
+Added GET /api/flight-bookings/:id/cancellation, which shows the refund before the user confirms, and POST /api/flight-bookings/:id/cancel. The cancel uses a guarded update, so if two requests race only one cancels and refunds. The refund is issued through RefundsService (PAY-03). If the refund fails, the cancellation stands and the failure is reported. In-app notifications are left as TODO(GEN-01).
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-01, PAY-02, PAY-03, FLT-22, FLT-23, FLT-26 (check and commit)
+Prompt:
+Check these endpoints against the code and commit, with an AI_PROMPTS.txt entry for each part: POST /api/payments, POST /api/payments/:id/retry, GET /api/payments/:id, POST /api/payments/webhook (PAY-01); GET /api/bookings/:type/:id/policies, POST /api/bookings/:type/:id/accept-policies (PAY-02); GET /api/refunds/:id (PAY-03); POST /api/flight-bookings/hold (FLT-22); GET /api/flight-bookings/:id/e-ticket (FLT-23); POST /api/flight-bookings/:id/cancel (FLT-26); PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional); POST /api/hotel-bookings (HTL-16, HTL-18).
+How the output was used:
+All PAY-01/02/03 and FLT-22/23/26 routes exist. Not implemented: PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional) and POST /api/hotel-bookings (HTL-16, HTL-18). Tests 529/529 passed (one run had a flaky failure that passed on rerun) and lint passed with one warning. npm run build still fails with 20 type errors, all in src/auth, src/hotels and src/users, none in the payments or flight-bookings code. Committed; .vscode/ was left out.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: HTL-16, HTL-18
+Prompt:
+Implement POST /api/hotel-bookings (HTL-16, HTL-18). Only this endpoint: the hotel reservation list, details and cancel routes are not my part. Name it hotel booking, not reservation. Ask before doing anything else, and show me the commit before publishing.
+How the output was used:
+Added src/hotel-booking, which has only the create route, so it doesn't touch the hotel-bookings module on the teammate's branch. Rooms must be in the same hotel and active, each room gets adults and children (0-17), there must be at least one adult and no room over its max occupancy, and dates are checked (check-out after check-in, check-in not in the past at the hotel's local date). All rooms are held for 10 minutes in one MongoDB transaction; any overlap with a Confirmed reservation, an unexpired hold or a blocked range rejects the whole request. Adults are stored as age 18 in guestAges so the teammate's guest counts still work. Added holdExpiresAt to HotelBooking and pricePerNight to RoomBooking. Expired holds are swept every minute. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-27 (optional)
+Prompt:
+Implement PATCH /api/flight-bookings/:id/change-flight (FLT-27): change a Confirmed booking's date or flight (same route and cabin), paying any fare difference via Stripe or receiving a refund of a lower fare, subject to seat availability.
+How the output was used:
+Added the change-flight route. The new flight must be on the same route, airline and cabin, a round trip must stay in order, and passenger types must not change. New seats are held atomically. A lower or equal fare is applied at once and the difference refunded; a higher fare stores a pending change with its own PaymentIntent and holds the seats 10 minutes, and the change is applied only after Stripe confirms the payment. Unpaid changes expire and release their seats. Refunds can now be split across the first payment and fare-difference payments (Refund.changeId added), and cancellation refunds use the booking total after changes. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02..06, FLT-08, FLT-09, FLT-19, FLT-21, FLT-25, FLT-29 (openapi.yaml)
+Prompt:
+Add all my endpoints to openapi.yaml on a new branch docs/FLT-openapi from dev. Read how the file is written first (OpenAPI version, tags, $ref/components style, security scheme, error format); stop if it is missing or auto-generated. Add my 13 routes matching the real code (DTOs, validation, status codes, Swagger decorators): summary with requirement ID, who can call it, params, request body with examples, success response and the real 400/401/403/404/409 errors; shared schemas under components/schemas; name the tier schema AirlineCancellationTierDto (as in PR #24); money in integer cents, local times in, UTC out. Only add: stop if a path or schema name already exists. Check against the live /api/docs-json from a temporary worktree outside the repo with two local-only fixes (never committed) on a throwaway mongo:8.0 container; methods, paths, params and status codes must match; validate the YAML with a package already in node_modules. Show me the diff before committing.
+How the output was used:
+Reviewed the diff and approved it. The file is hand-maintained (no generator in the repo), so 13 operations on 12 paths, 30 schemas and 4 tags (Airports, Flights, Airlines, Flight bookings) were added, built from the live docs-json and checked against the controllers, DTOs and service exceptions. Add-only: git diff --patience shows 1368 additions, 0 deletions, and every original line is unchanged and in order. CancellationTierDto is documented as AirlineCancellationTierDto; money and validated whole numbers are type integer, holdExpiresAt and timeZone are nullable strings (the live doc says number/object there). My operations use the defined cookie scheme; the Blog operations' access_token reference was left for the blog owner. Verified: the YAML parses with js-yaml, every $ref resolves, and all 13 operations match the live doc on methods, paths, params, status codes, body and security. The temporary worktree, server and container were removed afterwards.
+Related Requirement: FLT-09
+Prompt:
+Small follow-up PR: from the latest dev, branch fix/FLT-09-swagger-dto-name, rename my CancellationTierDto to AirlineCancellationTierDto (only my file and its usages), build/test/lint, commit "fix(flights): rename CancellationTierDto to avoid Swagger schema clash with hotels (FLT-09)", push and open a PR into dev.
+How the output was used:
+A boot check of merged dev found that src/flights/dto/update-cancellation-policy.dto.ts and src/hotels/dto/update-hotel-policies.dto.ts both declared a class named CancellationTierDto. Swagger keys schemas by class name, so /api/docs showed the airline tier shape (daysBeforeDeparture) for PUT /api/hotels/{id}/policies instead of daysBeforeCheckIn. Renamed only the flights class and its uses in src/flights (2 files); hotels is unchanged. Validation and the API body are unchanged; only the Swagger schema name differs. Tests 514/514 and lint passed; npm run build still shows only the 20 type errors in auth, hotels and users that exist on dev.
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: I want you to walk me through how round-trip flights are implemented.
+
+------------------------------------------------
+
+RESPONSE: Round-trip flights are modeled as a single `FlightBooking` containing two `FlightSegment` entries (`segments[0]` for outbound, `segments[1]` for return), rather than linking two separate bookings.
+
+> [!NOTE]
+> The `Flight` schema defines an optional `roundTripFlightId` field with a self-reference check in [flight.schema.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/database/schemas/flight.schema.ts#L188-L228), but the booking flow does not use it—round trips are paired dynamically at booking time.
+
+---
+
+### 1. Data Model & Request DTO
+- **Database schema** ([expense.schema.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/database/schemas/expense.schema.ts#L416-L563)): `FlightBooking.segments` is an array of `FlightSegment` subdocuments validated to have `1` (one-way) or `2` (round-trip) items. Each segment stores `flightId`, `cabinName`, `seatPrice` (snapshot in cents), and `seats` (mapping `passengerIndex` to `row` + `column`).
+- **Request DTO** ([create-flight-booking.dto.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/dto/create-flight-booking.dto.ts#L30-L83)): `CreateFlightBookingDto.segments` accepts 1–2 `BookingSegmentDto` items (`{ flightId, cabinName }`). Because each segment specifies its own `cabinName`, outbound and return legs can use different cabins.
+
+---
+
+### 2. Booking Creation & Validation (`POST /api/flight-bookings` & `/hold`)
+Handled by `FlightBookingsService.create` in [flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L121-L222):
+
+1. **Flight & Route Checks**:
+   - Rejects using the same `flightId` for both segments.
+   - Expires any overdue holds on the involved flights first (`expireOverdueHolds`).
+   - Verifies each flight is `Scheduled` and not departed, its airline is `Active`, and the requested cabin exists.
+   - Calls `assertReturnTrip(outbound.flight, inbound.flight)` ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L1085-L1095)) to enforce:
+     - **Reverse route**: `inbound.departure.airportId === outbound.arrival.airportId` and `inbound.arrival.airportId === outbound.departure.airportId`.
+     - **Chronological order**: `inbound.departure.timestamp > outbound.arrival.timestamp`.
+2. **Passenger Classification**:
+   - Passenger types (`adult`, `child`, `infant`) are determined from `dateOfBirth` on the **outbound** flight's departure date in the outbound departure airport's local timezone (`passengerTypeOn` in [booking-rules.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/booking-rules.ts#L30-L42)).
+3. **Baggage & Pricing**:
+   - `assertBaggage` validates each passenger's `extraBagWeights` against **both** flights' `maxBagWeight` and **both** airlines' `maxExtraBagCount`.
+   - `baggageFee` is charged per flight and summed across both segments ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L159-L165)).
+   - `fareTotal` sums `segmentFare(cabin.seatPrice, seatedPassengers, infants)` across both segments (infants pay 10% rounded and occupy no seat).
+4. **Atomic Seat Holding & Rollback**:
+   - `holdSeats` reserves seats segment-by-segment using atomic `findOneAndUpdate` calls (`tryHoldSeats`). If holding the return flight fails—or saving the booking document fails—`releaseHeld(held)` releases the outbound seats that were already held ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L173-L219)).
+   - The booking is saved as `Pending Payment` with a single `holdExpiresAt` (10 minutes).
+
+---
+
+### 3. Post-Booking Lifecycle
+Once created, the two segments are managed together (or individually for flight changes):
+
+- **Payment & Expiry** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L280-L362)): `confirmPaid` marks seats `BOOKED` across all segments; `expireOverdueHolds` releases `HELD` seats across all segments back to `AVAILABLE`.
+- **Listing** ([booking-list.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/booking-list.ts#L44-L64)): `bookingListPipeline` looks up `segments[0]` (the outbound flight) to classify the booking as `upcoming` or `past`.
+- **E-Ticket PDF** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L822-L838)): `eTicket` prints both `Outbound` and `Return` flight sections and formats each passenger's seats as `outbound <seat>, return <seat>`.
+- **Cancellation** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L374-L429), [L863-L887](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L863-L887)): Cancelling applies to the entire booking, releases `BOOKED` seats on both segments, and calculates the refund percentage using the **outbound** flight's airline cancellation tiers and days left before the **outbound** departure.
+- **Changing a Flight (`PATCH /api/flight-bookings/:id/change-flight`)** ([change-flight.dto.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/dto/change-flight.dto.ts#L8-L19), [flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L440-L493)):
+  - `segmentIndex` (`0` = outbound, `1` = return) selects which leg to replace on a `Confirmed` booking.
+  - Re-validates same route, same airline, same cabin, baggage limits, and re-runs `assertReturnTrip` against the unchanged segment so the return still departs after the outbound lands.
+  - When changing the outbound leg (`segmentIndex === 0`), it also verifies that the new departure date does not change any passenger's age category (`adult`/`child`/`infant`).
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: So which is the better implementation? Should we keep the return flight ID, or is the dynamic one better?
+
+------------------------------------------------
+
+RESPONSE: The dynamic segments implementation is the better design, and it is the one the entire codebase actually uses. Flight.roundTripFlightId is currently unused schema left over from early modeling.
+
+Dynamic segments vs. Flight.roundTripFlightId
+Aspect	Dynamic segments (Current)	Flight.roundTripFlightId (Unused)
+Route & Date Flexibility	Users can pair any outbound flight with any return flight on the reverse route departing after arrival (assertReturnTrip).	Forces a static 1-to-1 link between two Flight documents; doesn't fit varying return dates.
+Mixed Airlines / Cabins	Outbound and return legs can be on different airlines and in different cabins (Economy out, Business back).	Assumes a single paired return flight; awkward for multi-airline or multi-date search.
+Flight Changes (FLT-27)	changeFlight can swap segmentIndex 0 or 1 independently while re-checking assertReturnTrip.	Modifying one leg would conflict with a fixed roundTripFlightId on the Flight document.
+
+Recommendation: You can safely remove roundTripFlightId (and its pre('validate') check) from flight.schema.ts unless you specifically plan to add a "featured/suggested return flight" feature later. Keeping an unused field on Flight only creates confusion about where round-trip pairing lives.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: Let's remove it.
+
+------------------------------------------------
+
+RESPONSE: Removed roundTripFlightId and its validation check from flight.schema.ts. The backend build and test suite are currently running; waiting for the results.
+
+================================================
+
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: We need to implement the following API endpoints:
+
+|`GET`|`/api/admin/audit-logs`|`GEN-07`|
+|`GET`|`/api/admin/reports`|`GEN-09`, `GEN-10`|
+|`PATCH`|`/api/admin/reports/:id`|`GEN-10`|
+|`DELETE`|`/api/admin/content/:type/:id`|`GEN-10`|
+|`GET`|`/api/flights/search`|`FLT-11`, `FLT-12`, `FLT-15`|
+|`GET`|`/api/itineraries/:id/flights`|`ITN-26`|
+
+How should we do them in a high quality? If you ever need help, refer to project description (md) and functional requirements (csv)
+
+------------------------------------------------
+
+RESPONSE: Implemented all six endpoints with Mongoose schemas, DTOs, Swagger documentation, transactional moderation/audit logging, and Vitest unit tests:
+1. Added `AuditLog` (`audit_logs`, GEN-07) and `Report` (`reports` with unique `{ reporterId, targetType, targetId }` index, GEN-09/GEN-10) schemas in `backend/src/database/schemas/`, added `isHidden` support on `Comment`, `HotelReview`, and `Itinerary` (GEN-10) plus `cityId` on `ItineraryDay` (ITN-05/ITN-26), and registered the models in `DatabaseModule`.
+2. Implemented `AdminModerationController` and `AdminModerationService` (`GET /api/admin/audit-logs`, `GET /api/admin/reports`, `PATCH /api/admin/reports/:id`, `DELETE /api/admin/content/:type/:id`) with MongoDB transactions, content hiding/deletion across posts, comments, reviews (with hotel averageRating recalculation), and itineraries, and atomic audit logging.
+3. Implemented `FlightSearchController` and `FlightSearchService` (`GET /api/flights/search`, FLT-11, FLT-12, FLT-15) supporting one-way and round-trip searches in the departure airport's IANA time zone, passenger mix rules (`adults >= 1`, `infants <= adults`, seated = `adults + children`, infants at 10% fare), optional cabin and min/max price filtering, sorting by price/duration/departureTime, and 10-item pagination.
+4. Implemented `ItinerariesController` and `ItinerariesService` (`GET /api/itineraries/:id/flights`, ITN-26) verifying ownership/visibility, resolving all airports in the city of the itinerary's first day, defaulting outbound/return dates to the itinerary's start and last day dates, and reusing `FlightSearchService`.
+
+================================================

@@ -1,0 +1,2323 @@
+# API contract (OpenAPI 3). Generated from the Swagger decorators in the code.
+# Blog section: BLG-01 to BLG-10, BLG-12, BLG-13 (backend/src/blog).
+# Teammates: add your module's paths under "paths:" and schemas under "components.schemas".
+
+openapi: 3.0.0
+info:
+  title: Travel Planning and Booking API
+  description: ''
+  version: '1.0'
+  contact: {}
+tags:
+  - name: Blog
+    description: 'Blog and community: BLG-01 to BLG-10, BLG-12, BLG-13'
+  - name: Airports
+    description: 'Predefined airports, read-only: FLT-02'
+  - name: Flights
+    description: 'Airline moderators manage flights and cabins, see bookings, export passengers: FLT-03 to FLT-06, FLT-29'
+  - name: Airlines
+    description: 'Airline moderators set the baggage and cancellation policies: FLT-04, FLT-08, FLT-09'
+  - name: Flight bookings
+    description: 'Users book flights and see their own bookings: FLT-19, FLT-21, FLT-25'
+paths:
+  /api/posts:
+    get:
+      description: >-
+        Filter by tag with "tag" and search the title, tags and author name with "q". Search results are ordered by
+        likes + comments, newest first on ties; without "q" the newest posts come first.
+      operationId: BlogController_listPosts
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: q
+          required: false
+          in: query
+          description: >-
+            Keyword matched against the title, tags and author name. Results are ordered by likes + comments, newest
+            first on ties.
+          schema:
+            maxLength: 100
+            type: string
+        - name: tag
+          required: false
+          in: query
+          description: Only posts with this tag.
+          schema:
+            maxLength: 30
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPostsPageDto'
+      summary: Browse or search published posts (BLG-02, BLG-09)
+      tags:
+        - Blog
+    post:
+      operationId: BlogController_createPost
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Validation failed.
+        '401':
+          description: Not logged in.
+      security:
+        - access_token: []
+      summary: Create a post as Draft or Published (BLG-01)
+      tags:
+        - Blog
+  /api/posts/mine:
+    get:
+      operationId: BlogController_listMyPosts
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPostsPageDto'
+        '401':
+          description: Not logged in.
+      security:
+        - access_token: []
+      summary: List my own posts, drafts included (BLG-03)
+      tags:
+        - Blog
+  /api/posts/mine/{id}:
+    get:
+      operationId: BlogController_getMyPost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: Open one of my posts, drafts included (BLG-03, BLG-04)
+      tags:
+        - Blog
+  /api/posts/{id}:
+    get:
+      operationId: BlogController_getPost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: commentsPage
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPostDto'
+        '404':
+          description: Post not found, not published or hidden.
+      summary: Open a published post with its like count and comments (BLG-02)
+      tags:
+        - Blog
+    patch:
+      operationId: BlogController_updatePost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Validation failed.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: 'Edit my post: title, body, tags or status (BLG-04, BLG-08)'
+      tags:
+        - Blog
+    delete:
+      operationId: BlogController_deletePost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Post deleted.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: Delete my post with its likes and comments (BLG-04)
+      tags:
+        - Blog
+  /api/posts/{id}/comments:
+    post:
+      operationId: BlogController_addComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponseDto'
+        '400':
+          description: Empty comment or longer than 500 characters.
+        '401':
+          description: Not logged in.
+        '404':
+          description: Post not found or not published.
+      security:
+        - access_token: []
+      summary: Comment on a published post (BLG-05)
+      tags:
+        - Blog
+  /api/posts/{id}/like:
+    post:
+      operationId: BlogController_like
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeStatusDto'
+        '401':
+          description: Not logged in.
+        '404':
+          description: Post not found or not published.
+        '409':
+          description: You already liked this post.
+      security:
+        - access_token: []
+      summary: Like a published post once (BLG-06)
+      tags:
+        - Blog
+    delete:
+      operationId: BlogController_unlike
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeStatusDto'
+        '401':
+          description: Not logged in.
+        '404':
+          description: You have not liked this post.
+      security:
+        - access_token: []
+      summary: Remove my like from a post (BLG-06)
+      tags:
+        - Blog
+  /api/posts/{id}/images:
+    post:
+      operationId: BlogController_addImage
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: No file, wrong type, too large, or the post already has 5 images.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: Attach a JPG or PNG image (max 5 MB, max 5 per post) to my post (BLG-10, GEN-08)
+      tags:
+        - Blog
+  /api/posts/{id}/images/{imageId}:
+    delete:
+      operationId: BlogController_removeImage
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: imageId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post or image not found.
+      security:
+        - access_token: []
+      summary: Remove an image from my post (BLG-10)
+      tags:
+        - Blog
+  /api/posts/{id}/itinerary:
+    patch:
+      operationId: BlogController_attachItinerary
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachItineraryDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found, or the itinerary is not one of yours.
+      security:
+        - access_token: []
+      summary: Attach one of my itineraries to my post, or detach it (BLG-13)
+      tags:
+        - Blog
+  /api/comments/{id}:
+    patch:
+      operationId: CommentsController_updateComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponseDto'
+        '400':
+          description: Empty comment or longer than 500 characters.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The comment belongs to another user.
+        '404':
+          description: Comment not found.
+      security:
+        - access_token: []
+      summary: Edit my comment (BLG-07)
+      tags:
+        - Blog
+    delete:
+      operationId: CommentsController_deleteComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Comment deleted.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The comment belongs to another user.
+        '404':
+          description: Comment not found.
+      security:
+        - access_token: []
+      summary: Delete my comment (BLG-07)
+      tags:
+        - Blog
+  /api/tags/{tag}/posts:
+    get:
+      operationId: TagsController_listByTag
+      parameters:
+        - name: tag
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPostsPageDto'
+      summary: List published posts with a tag, newest first (BLG-08)
+      tags:
+        - Blog
+  /api/authors/{id}:
+    get:
+      operationId: AuthorsController_getAuthor
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: postsPage
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: itinerariesPage
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorPageDto'
+        '404':
+          description: Author not found or deactivated.
+      summary: 'Public author page: name, join date, published posts and public itineraries (BLG-12)'
+      tags:
+        - Blog
+  /api/airports:
+    get:
+      description: 'Who can call it: Public (no login needed).'
+      operationId: AirportsController_list
+      parameters:
+        - name: search
+          required: false
+          in: query
+          description: Matches the start of the IATA code or any part of the airport name
+          schema:
+            example: CAI
+            type: string
+        - name: page
+          required: false
+          in: query
+          description: Page number, starting at 1
+          schema:
+            minimum: 1
+            default: 1
+            type: integer
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AirportListResponseDto'
+        '400':
+          description: Invalid page or search value
+      summary: List the predefined airports (read-only), 10 per page (FLT-02)
+      tags:
+        - Airports
+  /api/flights:
+    post:
+      description: >-
+        Who can call it: Airline moderator (only for the airline whose moderatorId is your user id). Times are local to
+        each airport (its city's IANA time zone) and stored in UTC. Seats are generated from each cabin's rows and layout.
+      operationId: FlightsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFlightDto'
+            example:
+              airlineId: 665f1c2e9b1e8a0012345678
+              number: '123'
+              departureAirportId: 665f1c2e9b1e8a001234567a
+              departureLocalTime: 2026-12-01T10:00
+              arrivalAirportId: 665f1c2e9b1e8a001234567b
+              arrivalLocalTime: 2026-12-01T14:30
+              maxBagWeight: 32
+              cabins:
+                - name: Business
+                  seatPrice: 150000
+                  freeBagWeight: 32
+                  firstRow: 1
+                  lastRow: 4
+                  layout: AC-DF
+                - name: Economy
+                  seatPrice: 45000
+                  freeBagWeight: 23
+                  firstRow: 10
+                  lastRow: 35
+                  layout: ABC-DEF
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponseDto'
+        '400':
+          description: >-
+            Invalid body; same airports; unknown airport or city without a time zone; arrival not after departure;
+            departure in the past; invalid cabins
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, not your airline, or the airline is deactivated
+        '404':
+          description: Airline not found
+        '409':
+          description: Flight number already used by this airline on that local departure date
+      security:
+        - cookie: []
+      summary: Create a Scheduled flight for your airline (FLT-03)
+      tags:
+        - Flights
+  /api/flights/{id}/cabins:
+    post:
+      description: 'Who can call it: Airline moderator (only for flights of the airline you moderate).'
+      operationId: FlightsController_addCabin
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Flight id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCabinDto'
+            example:
+              name: Premium Economy
+              seatPrice: 90000
+              freeBagWeight: 23
+              firstRow: 5
+              lastRow: 9
+              layout: ABC-DEF
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponseDto'
+        '400':
+          description: Invalid cabin, rows overlap another cabin, or free allowance above maxBagWeight
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not your airline's flight
+        '404':
+          description: Flight not found
+        '409':
+          description: Cabin type already on the flight, flight not Scheduled or already departed, or it changed meanwhile
+      security:
+        - cookie: []
+      summary: Add a cabin type the flight does not have yet (Scheduled flights only) (FLT-04)
+      tags:
+        - Flights
+  /api/flights/{id}/cabins/{cabinId}:
+    patch:
+      description: >-
+        Who can call it: Airline moderator (only for flights of the airline you moderate). Added rows use the cabin's
+        existing seat layout. Rows can only be removed if none of their seats is held or booked. Existing bookings keep
+        their price.
+      operationId: FlightsController_updateCabin
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Flight id
+          schema:
+            type: string
+        - name: cabinId
+          required: true
+          in: path
+          description: 'Cabin name, e.g. "Premium Economy" (URL-encoded: Premium%20Economy). Cabins have no separate id.'
+          schema:
+            enum:
+              - Economy
+              - Premium Economy
+              - Business
+              - First
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCabinDto'
+            example:
+              seatPrice: 50000
+              lastRow: 38
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponseDto'
+        '400':
+          description: Nothing to update, invalid values, or rows overlap another cabin
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not your airline's flight
+        '404':
+          description: Flight not found, or it has no such cabin
+        '409':
+          description: Rows to remove have held/booked seats, flight not Scheduled or already departed, or it changed meanwhile
+      security:
+        - cookie: []
+      summary: Change a cabin's seat price and/or row range (Scheduled flights only) (FLT-04, FLT-05)
+      tags:
+        - Flights
+  /api/airlines/{id}/baggage-policy:
+    put:
+      description: 'Who can call it: Airline moderator (only for the airline whose moderatorId is your user id).'
+      operationId: AirlinesController_updateBaggagePolicy
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Airline id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBaggagePolicyDto'
+            example:
+              priceExtraBag: 2500
+              maxExtraBagCount: 2
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BaggagePolicyResponseDto'
+        '400':
+          description: Price not a whole number of cents > 0, or count < 0
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not the moderator of this airline
+        '404':
+          description: Airline not found
+      security:
+        - cookie: []
+      summary: Set your airline's extra-baggage price and per-passenger limit (FLT-04, FLT-08)
+      tags:
+        - Airlines
+  /api/flights/{id}:
+    patch:
+      description: >-
+        Who can call it: Airline moderator (only for flights of the airline you moderate). Local times as on creation.
+        Changing an airport also needs that side's local time. A side whose time is not sent keeps its stored time.
+      operationId: FlightsController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Flight id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFlightDto'
+            example:
+              departureLocalTime: 2026-12-01T11:00
+              arrivalLocalTime: 2026-12-01T15:30
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponseDto'
+        '400':
+          description: >-
+            Nothing to update, same airports, missing local time for a changed airport, invalid times, or a city without a
+            time zone
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not your airline's flight
+        '404':
+          description: Flight not found
+        '409':
+          description: >-
+            Airports changed after a seat was held or booked, duplicate flight number on that date, flight not Scheduled
+            or already departed
+      security:
+        - cookie: []
+      summary: Change departure/arrival times (and airports, until a seat is held or booked) (FLT-05)
+      tags:
+        - Flights
+  /api/flights/{id}/cancel:
+    post:
+      description: >-
+        Who can call it: Airline moderator (only for flights of the airline you moderate). Sets the status to cancelled
+        (hidden from search) and releases all held seats, in one atomic update.
+      operationId: FlightsController_cancel
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Flight id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightResponseDto'
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not your airline's flight
+        '404':
+          description: Flight not found
+        '409':
+          description: Flight not Scheduled (e.g. already cancelled) or already departed
+      security:
+        - cookie: []
+      summary: Cancel a Scheduled flight (FLT-06)
+      tags:
+        - Flights
+  /api/airlines/{id}/cancellation-policy:
+    put:
+      description: 'Who can call it: Airline moderator (only for the airline whose moderatorId is your user id).'
+      operationId: AirlinesController_updateCancellationPolicy
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Airline id
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCancellationPolicyDto'
+            example:
+              tiers:
+                - daysBeforeDeparture: 30
+                  refundPercentage: 100
+                - daysBeforeDeparture: 7
+                  refundPercentage: 50
+                - daysBeforeDeparture: 1
+                  refundPercentage: 20
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancellationPolicyResponseDto'
+        '400':
+          description: Invalid tier, or duplicate daysBeforeDeparture
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not the moderator of this airline
+        '404':
+          description: Airline not found
+      security:
+        - cookie: []
+      summary: Replace your airline's cancellation refund tiers (FLT-09)
+      tags:
+        - Airlines
+  /api/flight-bookings:
+    post:
+      description: >-
+        Who can call it: Registered user (role user); moderators and admins get 403. One segment = one-way, two = round
+        trip (outbound first; the return flies the reverse route after the outbound lands). Passenger types come from the
+        date of birth on the outbound departure date: adult 12+, child 2-11, infant under 2 (no seat, 10% of the seat
+        price). At least one adult, no more infants than adults. Extra bags: up to the airline's maximum per passenger,
+        each up to the flight's maximum bag weight, charged per flight. The booking is saved as Pending Payment and
+        expires if not paid before holdExpiresAt. Prices are in cents. The reference is null until the booking is
+        Confirmed.
+      operationId: FlightBookingsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateFlightBookingDto'
+            examples:
+              oneWay:
+                summary: One-way, one adult with one extra bag
+                value:
+                  segments:
+                    - flightId: 6740c0ffee0000000000a001
+                      cabinName: Economy
+                  passengers:
+                    - fullName: Mona Hassan
+                      dateOfBirth: '1990-05-31'
+                      passportNumber: A12345678
+                      extraBagWeights:
+                        - 20
+              roundTrip:
+                summary: Round trip (outbound first), one adult and one infant
+                value:
+                  segments:
+                    - flightId: 6740c0ffee0000000000a001
+                      cabinName: Economy
+                    - flightId: 6740c0ffee0000000000a002
+                      cabinName: Economy
+                  passengers:
+                    - fullName: Mona Hassan
+                      dateOfBirth: '1990-05-31'
+                      passportNumber: A12345678
+                    - fullName: Omar Hassan
+                      dateOfBirth: '2025-08-14'
+                      passportNumber: B98765432
+      responses:
+        '201':
+          description: Booking summary (FLT-21)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightBookingResponseDto'
+        '400':
+          description: >-
+            Invalid body, same flight twice, return not the reverse route or not after the outbound arrival, cabin not on
+            the flight, invalid date of birth, no adult, more infants than adults, duplicate passport, too many or too
+            heavy extra bags
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a registered user (moderator/admin), or account suspended or inactive
+        '404':
+          description: Flight not found
+        '409':
+          description: >-
+            Flight not Scheduled or already departed, airline inactive, not enough seats, or seats taken by concurrent
+            bookings
+      security:
+        - cookie: []
+      summary: Book a one-way or round-trip flight and hold the seats for 10 minutes (FLT-19, FLT-21)
+      tags:
+        - Flight bookings
+    get:
+      description: >-
+        Who can call it: Registered user (role user); moderators and admins get 403. Upcoming/past by the outbound
+        flight's departure time; cancelled includes expired bookings. Each group is paged on its own (10 per page, newest
+        booking first). Overdue seat holds are expired first.
+      operationId: FlightBookingsController_list
+      parameters:
+        - name: upcomingPage
+          required: false
+          in: query
+          description: Page of upcoming bookings, starting at 1
+          schema:
+            minimum: 1
+            default: 1
+            type: integer
+        - name: pastPage
+          required: false
+          in: query
+          description: Page of past bookings, starting at 1
+          schema:
+            minimum: 1
+            default: 1
+            type: integer
+        - name: cancelledPage
+          required: false
+          in: query
+          description: Page of cancelled and expired bookings, starting at 1
+          schema:
+            minimum: 1
+            default: 1
+            type: integer
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightBookingListResponseDto'
+        '400':
+          description: Invalid page number
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a registered user (moderator/admin), or account suspended or inactive
+      security:
+        - cookie: []
+      summary: Your flight bookings, grouped as upcoming, past and cancelled (FLT-25)
+      tags:
+        - Flight bookings
+  /api/flight-bookings/{id}:
+    get:
+      description: >-
+        Who can call it: Registered user (role user); moderators and admins get 403. Same summary as when booking. The
+        reference is null until the booking is Confirmed.
+      operationId: FlightBookingsController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Booking id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightBookingResponseDto'
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a registered user (moderator/admin), or account suspended or inactive
+        '404':
+          description: Booking not found (also when it is someone else's)
+      security:
+        - cookie: []
+      summary: One of your flight bookings (FLT-25)
+      tags:
+        - Flight bookings
+  /api/flights/{id}/bookings:
+    get:
+      description: >-
+        Who can call it: Airline moderator (only for flights of the airline you moderate). Pending Payment and Expired
+        bookings are left out. 10 per page, newest booking first. No passport numbers.
+      operationId: FlightsController_listBookings
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Flight id
+          schema:
+            type: string
+        - name: page
+          required: false
+          in: query
+          description: Page number, starting at 1
+          schema:
+            minimum: 1
+            default: 1
+            type: integer
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlightBookingsReportDto'
+        '400':
+          description: Invalid page number
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not your airline's flight
+        '404':
+          description: Flight not found
+      security:
+        - cookie: []
+      summary: Your flight's Confirmed and Cancelled bookings, with seats remaining per cabin (FLT-29)
+      tags:
+        - Flights
+  /api/flights/{id}/passengers/export:
+    get:
+      description: >-
+        Who can call it: Airline moderator (only for flights of the airline you moderate). One row per passenger of
+        Confirmed and Cancelled bookings: reference, passenger name, type, cabin, seat, extra bags (count), status. No
+        passport numbers. Cells starting with = + - @ or a tab are prefixed with a quote so spreadsheets do not run them.
+      operationId: FlightsController_exportPassengers
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: Flight id
+          schema:
+            type: string
+      responses:
+        '200':
+          description: CSV file (attachment)
+          content:
+            text/csv:
+              schema:
+                type: string
+          headers:
+            Content-Disposition:
+              description: attachment; filename="<file>.csv"
+              schema:
+                type: string
+        '401':
+          description: Not logged in
+        '403':
+          description: Not a moderator, or not your airline's flight
+        '404':
+          description: Flight not found
+      security:
+        - cookie: []
+      summary: Download the passenger list of your flight as CSV (FLT-29)
+      tags:
+        - Flights
+components:
+  securitySchemes:
+    cookie:
+      type: apiKey
+      in: cookie
+      name: access_token
+  schemas:
+    AttachItineraryDto:
+      type: object
+      properties:
+        itineraryId:
+          type: string
+          nullable: true
+          example: 6650f1c2a1b2c3d4e5f60718
+          description: One of your own itineraries, or null to detach the current one.
+      required:
+        - itineraryId
+    AttachedItineraryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        startDate:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - startDate
+    AuthorItinerariesPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorItineraryDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    AuthorItineraryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        startDate:
+          format: date-time
+          type: string
+        dayCount:
+          type: number
+      required:
+        - id
+        - title
+        - startDate
+        - dayCount
+    AuthorPageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        joinedAt:
+          format: date-time
+          type: string
+          description: When the author joined.
+        posts:
+          $ref: '#/components/schemas/PublicPostsPageDto'
+        itineraries:
+          $ref: '#/components/schemas/AuthorItinerariesPageDto'
+      required:
+        - id
+        - name
+        - username
+        - joinedAt
+        - posts
+        - itineraries
+    AuthorSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        name:
+          type: string
+      required:
+        - name
+    CommentDto:
+      type: object
+      properties:
+        text:
+          type: string
+          example: Great tips, thanks!
+          maxLength: 500
+      required:
+        - text
+    CommentResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        postId:
+          type: string
+        text:
+          type: string
+        author:
+          $ref: '#/components/schemas/AuthorSummaryDto'
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - postId
+        - text
+        - author
+        - createdAt
+        - updatedAt
+    CommentsPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentResponseDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    CreatePostDto:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Three days in Cairo
+          maxLength: 200
+        body:
+          type: string
+          example: We started our trip at the Egyptian Museum...
+        tags:
+          example:
+            - egypt
+            - museums
+          maxItems: 5
+          description: Up to 5 tags, each at most 30 characters. Stored in lowercase; duplicates are merged.
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - published
+          default: draft
+      required:
+        - title
+        - body
+    LikeStatusDto:
+      type: object
+      properties:
+        liked:
+          type: boolean
+        likeCount:
+          type: number
+      required:
+        - liked
+        - likeCount
+    MyPostSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - published
+            - draft
+            - archived
+        tags:
+          type: array
+          items:
+            type: string
+        likeCount:
+          type: number
+        commentCount:
+          type: number
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - status
+        - tags
+        - likeCount
+        - commentCount
+        - createdAt
+        - updatedAt
+    MyPostsPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyPostSummaryDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    PostImageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+      required:
+        - id
+        - url
+    PostResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum:
+            - published
+            - draft
+            - archived
+        tags:
+          type: array
+          items:
+            type: string
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostImageDto'
+        authorId:
+          type: string
+        itineraryId:
+          type: string
+          nullable: true
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - body
+        - status
+        - tags
+        - images
+        - authorId
+        - createdAt
+        - updatedAt
+    PublicPostDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostImageDto'
+        author:
+          $ref: '#/components/schemas/AuthorSummaryDto'
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        likeCount:
+          type: number
+        comments:
+          description: Comments in chronological order.
+          allOf:
+            - $ref: '#/components/schemas/CommentsPageDto'
+        itinerary:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/AttachedItineraryDto'
+      required:
+        - id
+        - title
+        - body
+        - tags
+        - images
+        - author
+        - createdAt
+        - updatedAt
+        - likeCount
+        - comments
+    PublicPostSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        excerpt:
+          type: string
+          description: The first 200 characters of the body.
+        tags:
+          type: array
+          items:
+            type: string
+        author:
+          $ref: '#/components/schemas/AuthorSummaryDto'
+        likeCount:
+          type: number
+        commentCount:
+          type: number
+        createdAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - excerpt
+        - tags
+        - author
+        - likeCount
+        - commentCount
+        - createdAt
+    PublicPostsPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          description: Empty when nothing matches ("no results").
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicPostSummaryDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    UpdatePostDto:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Three days in Cairo
+          maxLength: 200
+        body:
+          type: string
+          example: We started our trip at the Egyptian Museum...
+        tags:
+          example:
+            - egypt
+            - museums
+          maxItems: 5
+          description: Up to 5 tags, each at most 30 characters. Stored in lowercase; duplicates are merged.
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - published
+          default: draft
+    AirlineCancellationTierDto:
+      type: object
+      properties:
+        daysBeforeDeparture:
+          type: integer
+          description: Applies when at least this many days remain before departure (whole number >= 0, unique per airline)
+          example: 7
+          minimum: 0
+        refundPercentage:
+          type: integer
+          description: Refund percentage, whole number 0-100
+          example: 50
+          minimum: 0
+          maximum: 100
+      required:
+        - daysBeforeDeparture
+        - refundPercentage
+    AirportCityDto:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 665f1c2e9b1e8a0012345678
+        name:
+          type: string
+          example: Cairo
+      required:
+        - id
+        - name
+    AirportCountryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 665f1c2e9b1e8a0012345679
+        code:
+          type: string
+          example: EG
+          description: ISO 3166-1 alpha-2 code
+        name:
+          type: string
+          example: Egypt
+      required:
+        - id
+        - code
+        - name
+    AirportListResponseDto:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AirportResponseDto'
+        page:
+          type: number
+          example: 1
+        pageSize:
+          type: number
+          example: 10
+        total:
+          type: number
+          example: 42
+      required:
+        - items
+        - page
+        - pageSize
+        - total
+    AirportResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 665f1c2e9b1e8a001234567a
+        iataCode:
+          type: string
+          example: CAI
+        name:
+          type: string
+          example: Cairo International Airport
+        city:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/AirportCityDto'
+        country:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/AirportCountryDto'
+        timeZone:
+          type: string
+          example: Africa/Cairo
+          nullable: true
+          description: IANA time zone of the airport's city. Null if the city has no time zone set.
+      required:
+        - id
+        - iataCode
+        - name
+        - city
+        - country
+        - timeZone
+    BaggagePolicyResponseDto:
+      type: object
+      properties:
+        airlineId:
+          type: string
+          example: 665f1c2e9b1e8a0012345678
+        priceExtraBag:
+          type: integer
+          description: Cents
+          example: 2500
+        maxExtraBagCount:
+          type: integer
+          example: 2
+      required:
+        - airlineId
+        - priceExtraBag
+        - maxExtraBagCount
+    BookingAirportDto:
+      type: object
+      properties:
+        airportId:
+          type: string
+        iataCode:
+          type: string
+          example: CAI
+        timestamp:
+          type: string
+          description: UTC
+          example: '2026-12-01T08:00:00.000Z'
+        localTime:
+          type: string
+          description: Local time at the airport
+          example: 2026-12-01T10:00
+        timeZone:
+          type: string
+          example: Africa/Cairo
+      required:
+        - airportId
+        - iataCode
+        - timestamp
+        - localTime
+        - timeZone
+    BookingPassengerDto:
+      type: object
+      properties:
+        fullName:
+          type: string
+          example: Mona Hassan
+          minLength: 1
+          maxLength: 100
+        dateOfBirth:
+          type: string
+          description: Calendar date, YYYY-MM-DD
+          example: '1990-05-31'
+        passportNumber:
+          type: string
+          description: Passport or national ID number, 5-20 letters and digits
+          example: A12345678
+        extraBagWeights:
+          description: >-
+            Weight in whole kg of each extra bag (count up to the airline's maximum, each up to the flight's maximum bag
+            weight)
+          example:
+            - 20
+          default: []
+          type: array
+          items:
+            type: integer
+      required:
+        - fullName
+        - dateOfBirth
+        - passportNumber
+    BookingPassengerResponseDto:
+      type: object
+      properties:
+        fullName:
+          type: string
+        dateOfBirth:
+          type: string
+          example: '1990-05-31'
+        type:
+          type: string
+          enum:
+            - adult
+            - child
+            - infant
+        passportNumber:
+          type: string
+        extraBagWeights:
+          description: Extra bag weights in kg
+          type: array
+          items:
+            type: number
+        seats:
+          type: array
+          items:
+            $ref: '#/components/schemas/PassengerSeatDto'
+      required:
+        - fullName
+        - dateOfBirth
+        - type
+        - passportNumber
+        - extraBagWeights
+        - seats
+    BookingSegmentDto:
+      type: object
+      properties:
+        flightId:
+          type: string
+          description: Flight id
+          example: 6740c0ffee0000000000a001
+        cabinName:
+          type: string
+          enum:
+            - Economy
+            - Premium Economy
+            - Business
+            - First
+          example: Economy
+      required:
+        - flightId
+        - cabinName
+    BookingSegmentResponseDto:
+      type: object
+      properties:
+        flightId:
+          type: string
+        flightNumber:
+          type: string
+          example: MS 123
+        airlineName:
+          type: string
+          example: EgyptAir
+        departure:
+          $ref: '#/components/schemas/BookingAirportDto'
+        arrival:
+          $ref: '#/components/schemas/BookingAirportDto'
+        cabinName:
+          type: string
+          enum:
+            - Economy
+            - Premium Economy
+            - Business
+            - First
+        seatPrice:
+          type: integer
+          description: Seat price in cents, agreed at booking time
+          example: 45000
+        infantPrice:
+          type: integer
+          description: Infant fare in cents (10% of the seat price)
+          example: 4500
+        seatedPassengers:
+          type: number
+          example: 2
+        infants:
+          type: number
+          example: 1
+        fare:
+          type: integer
+          description: Fare for this flight in cents
+          example: 94500
+      required:
+        - flightId
+        - flightNumber
+        - airlineName
+        - departure
+        - arrival
+        - cabinName
+        - seatPrice
+        - infantPrice
+        - seatedPassengers
+        - infants
+        - fare
+    CabinSeatsDto:
+      type: object
+      properties:
+        name:
+          type: string
+          enum:
+            - Economy
+            - Premium Economy
+            - Business
+            - First
+        seatCount:
+          type: number
+          example: 156
+        availableSeats:
+          type: number
+          description: Seats still available to book
+          example: 120
+      required:
+        - name
+        - seatCount
+        - availableSeats
+    CabinSummaryDto:
+      type: object
+      properties:
+        name:
+          type: string
+          enum:
+            - Economy
+            - Premium Economy
+            - Business
+            - First
+        seatPrice:
+          type: integer
+          description: Cents
+          example: 45000
+        freeBagWeight:
+          type: number
+          description: kg
+          example: 23
+        seatCount:
+          type: number
+          example: 156
+        availableSeats:
+          type: number
+          example: 156
+      required:
+        - name
+        - seatPrice
+        - freeBagWeight
+        - seatCount
+        - availableSeats
+    CancellationPolicyResponseDto:
+      type: object
+      properties:
+        airlineId:
+          type: string
+          example: 665f1c2e9b1e8a0012345678
+        tiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AirlineCancellationTierDto'
+      required:
+        - airlineId
+        - tiers
+    CreateCabinDto:
+      type: object
+      properties:
+        name:
+          type: string
+          enum:
+            - Economy
+            - Premium Economy
+            - Business
+            - First
+          example: Economy
+          description: Each cabin type at most once per flight
+        seatPrice:
+          type: integer
+          description: Price per seat in cents (> 0)
+          example: 45000
+          minimum: 1
+        freeBagWeight:
+          type: integer
+          description: Free baggage allowance in whole kg (0 = none); can't exceed the flight's maxBagWeight
+          example: 23
+          minimum: 0
+          maximum: 100
+        firstRow:
+          type: integer
+          description: First seat row of this cabin (inclusive)
+          example: 10
+          minimum: 1
+          maximum: 150
+        lastRow:
+          type: integer
+          description: Last seat row of this cabin (inclusive)
+          example: 35
+          minimum: 1
+          maximum: 150
+        layout:
+          type: string
+          description: >-
+            Seat letters per row with "-" for each aisle (at most 12 seats). Outer letters are window seats, letters next to
+            "-" are aisle seats, the rest are middle.
+          example: ABC-DEF
+      required:
+        - name
+        - seatPrice
+        - freeBagWeight
+        - firstRow
+        - lastRow
+        - layout
+    CreateFlightBookingDto:
+      type: object
+      properties:
+        segments:
+          minItems: 1
+          maxItems: 2
+          description: 1 = one-way, 2 = round trip (outbound, then return)
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingSegmentDto'
+        passengers:
+          minItems: 1
+          maxItems: 9
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingPassengerDto'
+      required:
+        - segments
+        - passengers
+    CreateFlightDto:
+      type: object
+      properties:
+        airlineId:
+          type: string
+          description: Your airline
+          example: 665f1c2e9b1e8a0012345678
+        number:
+          type: string
+          description: Flight number, 1-4 digits
+          example: '123'
+        departureAirportId:
+          type: string
+          description: An airport from GET /api/airports
+          example: 665f1c2e9b1e8a001234567a
+        departureLocalTime:
+          type: string
+          description: Local time at the departure airport, no offset
+          example: 2026-12-01T10:00
+        arrivalAirportId:
+          type: string
+          description: An airport from GET /api/airports
+          example: 665f1c2e9b1e8a001234567b
+        arrivalLocalTime:
+          type: string
+          description: Local time at the arrival airport, no offset
+          example: 2026-12-01T14:30
+        maxBagWeight:
+          type: integer
+          description: Maximum weight per bag in whole kg
+          example: 32
+          minimum: 1
+          maximum: 100
+        cabins:
+          description: 1 to 4 cabins
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateCabinDto'
+      required:
+        - airlineId
+        - number
+        - departureAirportId
+        - departureLocalTime
+        - arrivalAirportId
+        - arrivalLocalTime
+        - maxBagWeight
+        - cabins
+    FlightBookingEntryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        reference:
+          type: string
+          example: K7M2QX
+        status:
+          type: string
+          enum:
+            - confirmed
+            - cancelled
+        cabinName:
+          type: string
+          enum:
+            - Economy
+            - Premium Economy
+            - Business
+            - First
+        passengers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ManifestPassengerDto'
+      required:
+        - id
+        - reference
+        - status
+        - cabinName
+        - passengers
+    FlightBookingGroupPageDto:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightBookingResponseDto'
+        page:
+          type: number
+          example: 1
+        pageSize:
+          type: number
+          example: 10
+        total:
+          type: number
+          example: 3
+      required:
+        - items
+        - page
+        - pageSize
+        - total
+    FlightBookingListResponseDto:
+      type: object
+      properties:
+        upcoming:
+          $ref: '#/components/schemas/FlightBookingGroupPageDto'
+        past:
+          $ref: '#/components/schemas/FlightBookingGroupPageDto'
+        cancelled:
+          $ref: '#/components/schemas/FlightBookingGroupPageDto'
+      required:
+        - upcoming
+        - past
+        - cancelled
+    FlightBookingResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        reference:
+          type: string
+          example: K7M2QX
+          nullable: true
+          description: Shown once the booking is Confirmed; null before
+        status:
+          type: string
+          enum:
+            - pending payment
+            - confirmed
+            - completed
+            - expired
+            - cancelled
+          example: pending payment
+        segments:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingSegmentResponseDto'
+        passengers:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingPassengerResponseDto'
+        fareTotal:
+          type: integer
+          description: Sum of the segment fares in cents
+          example: 94500
+        baggageFee:
+          type: integer
+          description: Extra baggage fee in cents
+          example: 5000
+        total:
+          type: integer
+          description: fareTotal + baggageFee in cents
+          example: 99500
+        holdExpiresAt:
+          type: string
+          nullable: true
+          description: When the seat hold ends (UTC); pay before this
+          example: '2026-11-19T12:10:00.000Z'
+          format: date-time
+      required:
+        - id
+        - reference
+        - status
+        - segments
+        - passengers
+        - fareTotal
+        - baggageFee
+        - total
+        - holdExpiresAt
+    FlightBookingsReportDto:
+      type: object
+      properties:
+        flightId:
+          type: string
+        cabins:
+          type: array
+          items:
+            $ref: '#/components/schemas/CabinSeatsDto'
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FlightBookingEntryDto'
+        page:
+          type: number
+          example: 1
+        pageSize:
+          type: number
+          example: 10
+        total:
+          type: number
+          example: 42
+      required:
+        - flightId
+        - cabins
+        - items
+        - page
+        - pageSize
+        - total
+    FlightResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 665f1c2e9b1e8a0012345680
+        airlineId:
+          type: string
+          example: 665f1c2e9b1e8a0012345678
+        number:
+          type: string
+          example: '123'
+        status:
+          type: string
+          enum:
+            - scheduled
+            - cancelled
+            - departed
+          example: scheduled
+        departure:
+          $ref: '#/components/schemas/FlightStopResponseDto'
+        arrival:
+          $ref: '#/components/schemas/FlightStopResponseDto'
+        maxBagWeight:
+          type: number
+          description: kg
+          example: 32
+        cabins:
+          type: array
+          items:
+            $ref: '#/components/schemas/CabinSummaryDto'
+      required:
+        - id
+        - airlineId
+        - number
+        - status
+        - departure
+        - arrival
+        - maxBagWeight
+        - cabins
+    FlightStopResponseDto:
+      type: object
+      properties:
+        airportId:
+          type: string
+          example: 665f1c2e9b1e8a001234567a
+        timestamp:
+          type: string
+          description: Stored UTC instant
+          example: '2026-12-01T08:00:00.000Z'
+          format: date-time
+        localTime:
+          type: string
+          description: Local time at the airport (no offset), e.g. 2026-12-01T10:00
+          example: 2026-12-01T10:00
+        timeZone:
+          type: string
+          example: Africa/Cairo
+      required:
+        - airportId
+        - timestamp
+        - localTime
+        - timeZone
+    ManifestPassengerDto:
+      type: object
+      properties:
+        fullName:
+          type: string
+          example: Mona Hassan
+        type:
+          type: string
+          enum:
+            - adult
+            - child
+            - infant
+        seat:
+          type: string
+          nullable: true
+          example: 12A
+          description: Seat on this flight; null for infants
+        extraBagWeights:
+          description: Extra bag weights in kg
+          type: array
+          items:
+            type: number
+      required:
+        - fullName
+        - type
+        - seat
+        - extraBagWeights
+    PassengerSeatDto:
+      type: object
+      properties:
+        segment:
+          type: number
+          description: 0 = outbound, 1 = return
+          example: 0
+        seat:
+          type: string
+          example: 12A
+      required:
+        - segment
+        - seat
+    UpdateBaggagePolicyDto:
+      type: object
+      properties:
+        priceExtraBag:
+          type: integer
+          description: Price per extra bag in cents (must be > 0)
+          example: 2500
+          minimum: 1
+        maxExtraBagCount:
+          type: integer
+          description: Maximum extra bags per passenger (>= 0)
+          example: 2
+          minimum: 0
+      required:
+        - priceExtraBag
+        - maxExtraBagCount
+    UpdateCabinDto:
+      type: object
+      properties:
+        seatPrice:
+          type: integer
+          description: Price per seat in cents (> 0)
+          example: 45000
+          minimum: 1
+        firstRow:
+          type: integer
+          description: First seat row of this cabin (inclusive)
+          example: 10
+          minimum: 1
+          maximum: 150
+        lastRow:
+          type: integer
+          description: Last seat row of this cabin (inclusive)
+          example: 35
+          minimum: 1
+          maximum: 150
+    UpdateCancellationPolicyDto:
+      type: object
+      properties:
+        tiers:
+          description: >-
+            Up to 20 tiers. The refund uses the tier with the highest threshold not exceeding the days remaining; if none
+            applies, the refund is 0%.
+          type: array
+          items:
+            $ref: '#/components/schemas/AirlineCancellationTierDto'
+      required:
+        - tiers
+    UpdateFlightDto:
+      type: object
+      properties:
+        departureAirportId:
+          type: string
+          description: An airport from GET /api/airports
+          example: 665f1c2e9b1e8a001234567a
+        departureLocalTime:
+          type: string
+          description: Local time at the departure airport, no offset
+          example: 2026-12-01T10:00
+        arrivalAirportId:
+          type: string
+          description: An airport from GET /api/airports
+          example: 665f1c2e9b1e8a001234567b
+        arrivalLocalTime:
+          type: string
+          description: Local time at the arrival airport, no offset
+          example: 2026-12-01T14:30

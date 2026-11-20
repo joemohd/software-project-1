@@ -1,9 +1,37 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import databaseConfig from './database/database.config.js';
+import { DatabaseModule } from './database/database.module.js';
+import { AuthModule } from './auth/auth.module.js';
+import { UploadModule } from './common/upload/upload.module.js';
+import { FlightsModule } from './flights/flights.module.js';
+import { BlogModule } from './blog/blog.module.js';
+import { AdminModule } from './admin/admin.module.js';
+import { UsersModule } from './users/users.module.js';
+import { HotelsModule } from './hotels/hotels.module.js';
+import { HotelBookingsModule } from './hotel-bookings/hotel-bookings.module.js';
+import { AirlinesModule } from './airlines/airlines.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
+import { ItinerariesModule } from './itineraries/itineraries.module.js';
 
 @Module({
-  imports: [],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, load: [databaseConfig] }),
+    DatabaseModule,
+    AuthModule,
+    UploadModule,
+    FlightsModule,
+    BlogModule,
+    AdminModule,
+    UsersModule,
+    HotelsModule,
+    HotelBookingsModule,
+    AirlinesModule,
+    PaymentsModule,
+    ItinerariesModule,
+  ],
   controllers: [AppController],
   providers: [AppService],
 })
