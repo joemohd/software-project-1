@@ -18,7 +18,7 @@ import { HotelBookingResponseDto } from './dto/hotel-booking-response.dto.js';
 import { HotelBookingService } from './hotel-booking.service.js';
 
 // HTL-16, HTL-18: registered users reserve hotel rooms (moderators and admins get 403).
-// Only the create route lives here; listing, details and cancellation of bookings are in the hotel-bookings module.
+// Booking creation route, hosted by the consolidated hotel-bookings module.
 @ApiTags('Hotel bookings')
 @ApiCookieAuth()
 @ApiUnauthorizedResponse({ description: 'Not logged in' })

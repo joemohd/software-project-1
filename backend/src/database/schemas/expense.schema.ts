@@ -329,6 +329,13 @@ export class HotelReview {
         default: null
     })
     reply: ReviewReply | null;
+
+    // GEN-10: hidden reviews stay visible only to their author and admins
+    @Prop({
+        type: Boolean,
+        default: false
+    })
+    isHidden?: boolean;
 }
 
 @Schema({
