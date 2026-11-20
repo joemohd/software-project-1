@@ -195,3 +195,12 @@ AGENT: Codex
 REQUIREMENTS: ACC-01, ACC-02, ACC-07, ACC-07a, ACC-09, ACC-11, ACC-12, ACC-19, GEN-01-B, GEN-07
 PROMPT: add multiple commits for change made
 RESPONSE: Reviewed the pending changes and organized them into separate conventional commits for authentication/email recovery, admin password resets, self-service profiles and deactivation, Swagger display, and the AI prompt log. Kept the current feature branch and excluded local environment secrets and generated files.
+
+================================================
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: HTL-01, FLT-01, GEN-07, GEN-08, GEN-13
+PROMPT: add those and commit. The attached endpoint table identifies POST /api/hotels, PATCH /api/hotels/:id, POST /api/airlines, GET /api/airlines/:id and PATCH /api/airlines/:id.
+RESPONSE: Added hotel and airline feature modules with validated profile DTOs, Swagger documentation and current-user identity. Creation is admin-only and uses an existing matching moderator, with unique provider assignment enforced by the database; edits require the assigned moderator of the matching type. Public airline reads return only active profiles and omit moderator/private configuration. Hotel locations are checked against city/country reference data; hotel photos and amenities enforce schema limits. Aligned hotel logo/checking-policy requirements and default airline bag policy with independent profile creation, and extended transactional admin audit logs for provider creation. Added service, HTTP and real-schema regression coverage. All 271 tests, the production build and focused lint passed before committing.
