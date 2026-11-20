@@ -59,13 +59,14 @@ const mongooseConfig = (config: ConfigService) => ({
 
 const databaseModels = [
     { name: ActivityCategory.name, schema: ActivityCategorySchema },
-    { name: Expense.name, schema: ExpenseSchema, discriminators: [
-        { name: Activity.name, schema: ActivitySchema, value: 'activity' },
-        { name: Transport.name, schema: TransportSchema, value: 'transport' },
-        // Mongoose only allows discriminators of the root model, so booking subtypes sit directly under Expense
-        { name: HotelBooking.name, schema: HotelBookingSchema, value: 'hotel_booking' },
-        { name: FlightBooking.name, schema: FlightBookingSchema, value: 'flight_booking' },
-    ] },
+    {
+        name: Expense.name, schema: ExpenseSchema, discriminators: [
+            { name: Activity.name, schema: ActivitySchema, value: 'activity' },
+            { name: Transport.name, schema: TransportSchema, value: 'transport' },
+            { name: HotelBooking.name, schema: HotelBookingSchema, value: 'hotel_booking' },
+            { name: FlightBooking.name, schema: FlightBookingSchema, value: 'flight_booking' },
+        ]
+    },
     { name: Refund.name, schema: RefundSchema },
     { name: Airport.name, schema: AirportSchema },
     { name: BlogPost.name, schema: BlogPostSchema },
@@ -79,10 +80,12 @@ const databaseModels = [
     { name: ClonebaseItinerary.name, schema: ClonebaseItinerarySchema },
     { name: Itinerary.name, schema: ItinerarySchema },
     { name: PasswordResetToken.name, schema: PasswordResetTokenSchema },
-    { name: Provider.name, schema: ProviderSchema, discriminators: [
-        { name: Airline.name, schema: AirlineSchema, value: 'airline' },
-        { name: Hotel.name, schema: HotelSchema, value: 'hotel' },
-    ] },
+    {
+        name: Provider.name, schema: ProviderSchema, discriminators: [
+            { name: Airline.name, schema: AirlineSchema, value: 'airline' },
+            { name: Hotel.name, schema: HotelSchema, value: 'hotel' },
+        ]
+    },
     { name: Room.name, schema: RoomSchema },
     { name: RoomType.name, schema: RoomTypeSchema },
     { name: TouristAttraction.name, schema: TouristAttractionSchema },
@@ -99,4 +102,4 @@ const databaseModels = [
     ],
     exports: [MongooseModule],
 })
-export class DatabaseModule {}
+export class DatabaseModule { }

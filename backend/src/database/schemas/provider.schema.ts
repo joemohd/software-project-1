@@ -116,8 +116,6 @@ export class CheckingPolicies {
     discriminatorKey: 'providerType'
 })
 export class Provider {
-    // Discriminator key: set by Mongoose from the discriminator model, so it must not be a @Prop
-    // (subclasses inherit @Props, and a discriminator schema may not declare the key itself).
     providerType: 'airline' | 'hotel';
 
     @Prop({
@@ -208,8 +206,7 @@ export class Airline extends Provider {
         uppercase: true,
         minlength: 2,
         maxlength: 3,
-        match: /^(?:[A-Z0-9]{2}|[A-Z]{3})$/,
-        unique: true
+        match: /^(?:[A-Z0-9]{2}|[A-Z]{3})$/
     })
     iataCode: string;
 
@@ -245,8 +242,6 @@ export class Hotel extends Provider {
     address: string;
 
     // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
-
-    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
         type: [String],
         default: [],
@@ -454,6 +449,14 @@ export const HotelSchema = SchemaFactory.createForClass(Hotel);
 export const RoomTypeSchema = SchemaFactory.createForClass(RoomType);
 export const RoomSchema = SchemaFactory.createForClass(Room);
 export const DaysBeforeServiceSchema = SchemaFactory.createForClass(DaysBeforeService);
+
+AirlineSchema.index(
+    { iataCode: 1 },
+    {
+        unique: true,
+        partialFilterExpression: { providerType: 'airline' }
+    }
+);
 
 RoomTypeSchema.index(
     { hotelId: 1, name: 1 },

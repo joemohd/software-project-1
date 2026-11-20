@@ -48,8 +48,6 @@ export class Expense {
     })
     userId: Types.ObjectId;
 
-    // Discriminator key: set by Mongoose from the discriminator model, so it must not be a @Prop
-    // (subclasses inherit @Props, and a discriminator schema may not declare the key itself).
     expenseType: 'activity' | 'transport' | 'hotel_booking' | 'flight_booking';
 
     @Prop({
@@ -209,16 +207,13 @@ export class Refund {
     stripeCreatedAt: Date;
 }
 
-// Shared base class for HotelBooking and FlightBooking only; not registered as a model.
-// bookingType is a plain field here, not a discriminator key.
-@Schema({ _id: false })
+@Schema({
+    timestamps: true,
+    strict: 'throw',
+    minimize: true,
+    _id: true,
+})
 export class Booking extends Expense {
-    @Prop({
-        type: String,
-        enum: ['hotel', 'flight'],
-        required: true
-    })
-    bookingType: 'hotel' | 'flight';
 
     @Prop({
         type: Number,
@@ -277,7 +272,7 @@ export class RoomBooking {
 })
 export class HotelBooking extends Booking {
     // TODO: The backend must prevent overlapping active booking dates for each room, including concurrent booking attempts.
-    // TODO: Make it is a future date
+    // TODO: Make sure it is a future date
     @Prop({
         type: Date,
         required: true
@@ -483,11 +478,9 @@ export class FlightBooking extends Booking {
 })
 export class Activity extends Expense {
     @Prop({ type: Date })
-    time: Date; //optional
+    time: Date;
 
     // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
-
-    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
         type: [String],
         default: [],
@@ -552,7 +545,7 @@ export class Transport extends Expense {
         required: true,
         trim: true
     })
-    mode:  string;
+    mode: string;
 
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
@@ -591,7 +584,6 @@ export const ActivitySchema = SchemaFactory.createForClass(Activity);
 export const TransportSchema = SchemaFactory.createForClass(Transport);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 export const RefundSchema = SchemaFactory.createForClass(Refund);
-export const BookingSchema = SchemaFactory.createForClass(Booking);
 export const HotelBookingSchema = SchemaFactory.createForClass(HotelBooking);
 export const FlightBookingSchema = SchemaFactory.createForClass(FlightBooking);
 export const BookingRoomSchema = SchemaFactory.createForClass(RoomBooking);

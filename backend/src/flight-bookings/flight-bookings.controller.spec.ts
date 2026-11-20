@@ -23,13 +23,13 @@ describe('FlightBookingsController roles', () => {
     expect(guard.canActivate(contextFor(UserRole.USER, false))).toBe(true);
   });
 
-  it.each([UserRole.MODERATOR, UserRole.ADMIN])('rejects a %s with 403', (role) => {
+  it.each([UserRole.AIRLINE_MODERATOR, UserRole.ADMIN])('rejects a %s with 403', (role) => {
     expect(() => guard.canActivate(contextFor(role))).toThrow(ForbiddenException);
   });
 
   // FLT-25: listing and details are for registered users too
   it.each(['list', 'findOne'])('%s: lets a user in and rejects a moderator with 403', (method) => {
     expect(guard.canActivate(contextFor(UserRole.USER, false, method))).toBe(true);
-    expect(() => guard.canActivate(contextFor(UserRole.MODERATOR, true, method))).toThrow(ForbiddenException);
+    expect(() => guard.canActivate(contextFor(UserRole.AIRLINE_MODERATOR, true, method))).toThrow(ForbiddenException);
   });
 });

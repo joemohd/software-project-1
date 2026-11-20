@@ -28,8 +28,6 @@ export class TouristAttraction {
     cityId: Types.ObjectId;
 
     // TODO: Enforce security measures later to make sure that the image URLs only come from our account on whatever cloud storage service we will use
-
-    // TODO: Determine whether it is better to store asset identifier rather than URL from our cloud storage service provider
     @Prop({
         type: [String],
         default: [],

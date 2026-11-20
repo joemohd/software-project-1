@@ -38,8 +38,8 @@ export function bookingListPipeline(
   }
 
   return [
-    // bookingType too, in case this runs on the shared expenses collection without the discriminator filter
-    { $match: { userId, bookingType: 'flight' } },
+    // expenseType too, in case this runs on the shared expenses collection without the discriminator filter
+    { $match: { userId, expenseType: 'flight_booking' } },
     {
       $lookup: {
         from: flightsCollection,

@@ -4,6 +4,8 @@ import { NestFactory } from '@nestjs/core';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ACCESS_TOKEN_COOKIE } from './auth/auth.helper.js';
 
 async function bootstrap() {
     const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -26,6 +28,16 @@ async function bootstrap() {
         transform: true
     }));
     
+    // Swagger UI at /api/docs; authenticated calls use the access-token cookie set by POST /api/auth/login
+    const swaggerConfig = new DocumentBuilder()
+        .setTitle('Travel Planning and Booking API')
+        .setVersion('1.0')
+        .addCookieAuth(ACCESS_TOKEN_COOKIE)
+        .build();
+    SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, swaggerConfig), {
+        swaggerOptions: { withCredentials: true, persistAuthorization: true }
+    });
+
     await app.listen(process.env.PORT ?? 3000);
 }
 

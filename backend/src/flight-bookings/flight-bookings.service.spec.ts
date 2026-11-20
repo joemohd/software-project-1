@@ -128,7 +128,7 @@ describe('FlightBookingsService (FLT-19, FLT-21, FLT-22)', () => {
       const saved = savedBooking();
       expect(saved).toMatchObject({
         name: 'MS 123 CAI -> JFK',
-        bookingType: 'flight',
+        expenseType: 'flight_booking',
         status: BookingStatus.PENDING_PAYMENT,
         fareTotal: 45000 * 2 + 4500,
         baggageFee: 5000,

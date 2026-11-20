@@ -8,7 +8,7 @@ describe('bookingListPipeline (FLT-25)', () => {
   const facets = pipeline.at(-1)!.$facet;
 
   it("only reads this user's flight bookings", () => {
-    expect(pipeline[0]).toEqual({ $match: { userId, bookingType: 'flight' } });
+    expect(pipeline[0]).toEqual({ $match: { userId, expenseType: 'flight_booking' } });
   });
 
   it("looks up the outbound flight's departure time", () => {

@@ -29,7 +29,7 @@ import { FlightsService } from './flights.service.js';
 @ApiTags('Flights')
 @ApiCookieAuth()
 @ApiUnauthorizedResponse({ description: 'Not logged in' })
-@Roles(UserRole.MODERATOR)
+@Roles(UserRole.AIRLINE_MODERATOR)
 @Controller('flights')
 export class FlightsController {
   constructor(

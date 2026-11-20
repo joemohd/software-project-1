@@ -23,7 +23,7 @@ import { CancellationPolicyResponseDto, UpdateCancellationPolicyDto } from './dt
 @ApiForbiddenResponse({ description: 'Not a moderator, or not the moderator of this airline' })
 @ApiNotFoundResponse({ description: 'Airline not found' })
 @ApiParam({ name: 'id', description: 'Airline id' })
-@Roles(UserRole.MODERATOR)
+@Roles(UserRole.AIRLINE_MODERATOR)
 @Controller('airlines')
 export class AirlinesController {
   constructor(private readonly airlinesService: AirlinesService) {}

@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UploadModule } from './common/upload/upload.module.js';
 import { FlightsModule } from './flights/flights.module.js';
+import { HotelsModule } from './hotels/hotels.module.js';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { FlightsModule } from './flights/flights.module.js';
     AuthModule,
     UploadModule,
     FlightsModule,
+    HotelsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

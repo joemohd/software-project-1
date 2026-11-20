@@ -164,7 +164,7 @@ export class FlightBookingsService {
             to: this.airportOf(context, flight.arrival.airportId).iataCode,
           })),
         ),
-        bookingType: 'flight',
+        expenseType: 'flight_booking',
         status: BookingStatus.PENDING_PAYMENT,
         segments: held.map((segment, index) => ({
           flightId: segment.flightId,
@@ -335,7 +335,7 @@ export class FlightBookingsService {
   }
 
   /** FLT-23: the reference is random; on the rare clash with an existing one, try a new one. */
-  private async saveWithUniqueReference(data: Omit<FlightBooking, 'reference' | 'payment' | 'policiesAcceptedAt' | 'expenseType' | 'description' | 'rating'>): Promise<BookingRecord> {
+  private async saveWithUniqueReference(data: Omit<FlightBooking, 'reference' | 'payment' | 'policiesAcceptedAt' | 'description' | 'rating'>): Promise<BookingRecord> {
     for (let attempt = 1; attempt <= REFERENCE_ATTEMPTS; attempt += 1) {
       try {
         const created = await this.bookingModel.create({ ...data, reference: generateReference() });
