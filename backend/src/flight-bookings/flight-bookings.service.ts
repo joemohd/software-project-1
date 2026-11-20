@@ -4,16 +4,21 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model, Types } from 'mongoose';
 import { Airport } from '../database/schemas/airport.schema.js';
 import { City } from '../database/schemas/city.schema.js';
-import { BookingStatus, FlightBooking, PassengerType } from '../database/schemas/expense.schema.js';
+import { BookingStatus, FlightBooking, PassengerType, PaymentIntentStatus } from '../database/schemas/expense.schema.js';
 import { CabinType, Flight, FlightStatus, SeatAvailability } from '../database/schemas/flight.schema.js';
 import { Airline, ProviderStatus } from '../database/schemas/provider.schema.js';
+import { buildTextPdf, PdfLine } from '../common/pdf/simple-pdf.js';
 import { utcToLocal } from '../flights/flight-time.js';
+import { daysBeforeService, refundAmount, refundPercentage } from '../payments/refund-policy.js';
+import { RefundsService, toRefundResponse } from '../payments/refunds.service.js';
+import { StripeService } from '../payments/stripe.service.js';
 import { PAGE_SIZE } from '../flights/flights.constants.js';
 import { BOOKING_GROUPS, BookingGroup, bookingListPipeline, GroupPages } from './booking-list.js';
 import {
@@ -34,6 +39,8 @@ import {
 import { CreateFlightBookingDto } from './dto/create-flight-booking.dto.js';
 import {
   BookingAirportDto,
+  CancellationQuoteDto,
+  CancelFlightBookingResponseDto,
   FlightBookingListResponseDto,
   FlightBookingResponseDto,
 } from './dto/flight-booking-response.dto.js';
@@ -47,6 +54,7 @@ type AirlineRecord = {
   iataCode: string;
   status: ProviderStatus;
   bagPolicy: { priceExtraBag: number; maxExtraBagCount: number };
+  cancellationPolicies: { daysBeforeService: { startDay: number; endDay?: number | null }; refundPercentage: number }[];
 };
 type AirportRecord = { _id: Types.ObjectId; iataCode: string; cityId: Types.ObjectId };
 type CityRecord = { _id: Types.ObjectId; timeZone?: string };
@@ -75,6 +83,8 @@ const isOpenForBooking = (flight: FlightRecord) =>
 
 @Injectable()
 export class FlightBookingsService {
+  private readonly logger = new Logger(FlightBookingsService.name);
+
   // Random source for seat picking on retries; a field so tests can make it predictable
   random: (max: number) => number = randomInt;
 
@@ -84,6 +94,8 @@ export class FlightBookingsService {
     @InjectModel(Airline.name) private readonly airlineModel: Model<Airline>,
     @InjectModel(Airport.name) private readonly airportModel: Model<Airport>,
     @InjectModel(City.name) private readonly cityModel: Model<City>,
+    private readonly stripeService: StripeService,
+    private readonly refundsService: RefundsService,
   ) {}
 
   /**
@@ -265,15 +277,205 @@ export class FlightBookingsService {
     for (const { _id } of candidates) {
       const booking = await this.bookingModel
         .findOneAndUpdate({ _id, ...overdue }, { $set: { status: BookingStatus.EXPIRED } }, { returnDocument: 'after' })
-        .select('segments')
-        .lean<Pick<BookingRecord, '_id' | 'segments'>>()
+        .select('segments payment')
+        .lean<Pick<BookingRecord, '_id' | 'segments' | 'payment'>>()
         .exec();
       if (!booking) continue; // someone else expired or confirmed it first
       await this.releaseHeld(booking.segments);
-      // TODO(PAY-01): cancel the booking's Stripe PaymentIntent when payments are built
+      // PAY-01: when the hold expires the PaymentIntent is cancelled, so it can no longer be paid
+      if (booking.payment && booking.payment.status !== PaymentIntentStatus.SUCCEEDED) {
+        await this.cancelPaymentIntent(booking.payment.paymentIntentId);
+      }
       expired += 1;
     }
     return expired;
+  }
+
+
+  /**
+   * FLT-23, PAY-01: called once the backend has verified with Stripe that the payment succeeded. Pending Payment →
+   * Confirmed only while the hold is still valid (a guarded update, so it can't race the hold expiry), then the held
+   * seats become booked. Returns false if the booking was no longer payable (e.g. its hold had just expired).
+   */
+  async confirmPaid(bookingId: Types.ObjectId): Promise<boolean> {
+    const booking = await this.bookingModel
+      .findOneAndUpdate(
+        { _id: bookingId, status: BookingStatus.PENDING_PAYMENT, holdExpiresAt: { $gt: new Date() } },
+        { $set: { status: BookingStatus.CONFIRMED, holdExpiresAt: null } },
+        { returnDocument: 'after' },
+      )
+      .select('segments')
+      .lean<Pick<BookingRecord, '_id' | 'segments'>>()
+      .exec();
+    if (!booking) return false;
+    for (const { flightId, cabinName, seats } of booking.segments) {
+      if (!seats.length) continue;
+      await this.flightModel
+        .updateOne(
+          { _id: flightId },
+          { $set: { 'cabins.$[cabin].seats.$[seat].availability': SeatAvailability.BOOKED } },
+          { arrayFilters: seatArrayFilters(cabinName, seats, SeatAvailability.HELD) },
+        )
+        .exec();
+    }
+    // TODO(GEN-01): in-app notification "booking confirmed" once the notifications module exists
+    return true;
+  }
+
+  /** FLT-26: what the user would get back if they cancelled now (shown before they confirm the cancellation). */
+  async cancellationQuote(userId: string, bookingId: string): Promise<CancellationQuoteDto> {
+    const { booking, context } = await this.loadOwned(userId, bookingId);
+    return this.quote(booking, context);
+  }
+
+  /**
+   * FLT-26, PAY-03: cancels the user's own Confirmed booking before departure. The booking becomes Cancelled, its seats go
+   * back on sale, and the refund from the airline's tiers (FLT-09) is sent back through Stripe.
+   */
+  async cancel(userId: string, bookingId: string): Promise<CancelFlightBookingResponseDto> {
+    const { booking, context } = await this.loadOwned(userId, bookingId);
+    const quote = this.quote(booking, context);
+    if (!quote.cancellable) throw new ConflictException(quote.reason);
+
+    // Guarded update: if two cancel requests race, only one cancels and refunds
+    const cancelled = await this.bookingModel
+      .findOneAndUpdate(
+        { _id: booking._id, userId: booking.userId, status: BookingStatus.CONFIRMED },
+        { $set: { status: BookingStatus.CANCELLED } },
+        { returnDocument: 'after' },
+      )
+      .lean<BookingRecord>()
+      .exec();
+    if (!cancelled) throw new ConflictException('This booking was already cancelled.');
+
+    for (const { flightId, cabinName, seats } of cancelled.segments) {
+      if (!seats.length) continue;
+      await this.flightModel
+        .updateOne(
+          { _id: flightId },
+          { $set: { 'cabins.$[cabin].seats.$[seat].availability': SeatAvailability.AVAILABLE } },
+          { arrayFilters: seatArrayFilters(cabinName, seats, SeatAvailability.BOOKED) },
+        )
+        .exec();
+    }
+
+    let refund: CancelFlightBookingResponseDto['refund'] = null;
+    let refundError: string | null = null;
+    if (quote.refundAmount > 0 && cancelled.payment) {
+      try {
+        const saved = await this.refundsService.issue({
+          bookingId: cancelled._id,
+          bookingType: 'flight',
+          userId: cancelled.userId,
+          paymentIntentId: cancelled.payment.paymentIntentId,
+          amount: quote.refundAmount,
+        });
+        refund = saved ? toRefundResponse(saved) : null;
+      } catch (error) {
+        // The cancellation stands; the refund failure is reported so it can be followed up
+        refundError = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Refund for cancelled flight booking ${cancelled._id.toString()} failed: ${refundError}`);
+      }
+    }
+    // TODO(GEN-01): in-app notification "booking cancelled / refund issued" once the notifications module exists
+
+    return {
+      booking: this.toResponse(cancelled, context),
+      refundPercentage: quote.refundPercentage,
+      refundAmount: quote.refundAmount,
+      refund,
+      refundError,
+    };
+  }
+
+  /** FLT-23: the e-ticket PDF of a Confirmed (or Completed) booking. */
+  async eTicket(userId: string, bookingId: string): Promise<{ fileName: string; pdf: Buffer }> {
+    const { booking, context } = await this.loadOwned(userId, bookingId);
+    if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.COMPLETED) {
+      throw new ConflictException(`The e-ticket is available once the booking is confirmed (this one is ${booking.status}).`);
+    }
+    const summary = this.toResponse(booking, context);
+    const money = (cents: number) => `USD ${(cents / 100).toFixed(2)}`;
+    const lines: PdfLine[] = [
+      { text: 'E-TICKET', size: 22, bold: true },
+      { text: `Booking reference: ${summary.reference ?? ''}`, size: 14, bold: true, gapBefore: 8 },
+      { text: `Status: ${summary.status}` },
+      { text: `Issued: ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC` },
+      { text: 'Flights', size: 14, bold: true, gapBefore: 14 },
+    ];
+    summary.segments.forEach((segment, index) => {
+      lines.push(
+        { text: `${index === 0 ? 'Outbound' : 'Return'}: ${segment.flightNumber}  ${segment.airlineName}`, bold: true, gapBefore: 6 },
+        { text: `From ${segment.departure.iataCode}  ${segment.departure.localTime.replace('T', ' ')} (${segment.departure.timeZone})` },
+        { text: `To   ${segment.arrival.iataCode}  ${segment.arrival.localTime.replace('T', ' ')} (${segment.arrival.timeZone})` },
+        { text: `Cabin: ${segment.cabinName}` },
+      );
+    });
+    lines.push({ text: 'Passengers', size: 14, bold: true, gapBefore: 14 });
+    summary.passengers.forEach((passenger, index) => {
+      const seats = passenger.seats.map((seat) => `${seat.segment === 0 ? 'outbound' : 'return'} ${seat.seat}`).join(', ');
+      lines.push(
+        { text: `${index + 1}. ${passenger.fullName} (${passenger.type})`, bold: true, gapBefore: 6 },
+        { text: `Passport/ID: ${passenger.passportNumber}    Seats: ${seats || 'none (on an adult\'s lap)'}` },
+        { text: `Extra bags: ${passenger.extraBagWeights.length ? passenger.extraBagWeights.map((kg) => `${kg} kg`).join(', ') : 'none'}` },
+      );
+    });
+    lines.push(
+      { text: 'Payment', size: 14, bold: true, gapBefore: 14 },
+      { text: `Fares: ${money(summary.fareTotal)}    Extra baggage: ${money(summary.baggageFee)}` },
+      { text: `Total paid: ${money(summary.total)}`, bold: true },
+      { text: 'Times are local to each airport.', size: 9, gapBefore: 20 },
+    );
+    return { fileName: `e-ticket-${summary.reference ?? summary.id}.pdf`, pdf: buildTextPdf(lines) };
+  }
+
+  /** The user's booking with its flights, or 404 (also when it is someone else's). */
+  private async loadOwned(userId: string, bookingId: string): Promise<{ booking: BookingRecord; context: BookingContext }> {
+    if (!isValidObjectId(bookingId)) throw new NotFoundException(BOOKING_NOT_FOUND);
+    const userObjectId = new Types.ObjectId(userId);
+    await this.expireOverdueHolds({ userId: userObjectId });
+    const booking = await this.bookingModel.findOne({ _id: bookingId, userId: userObjectId }).lean<BookingRecord>().exec();
+    if (!booking) throw new NotFoundException(BOOKING_NOT_FOUND);
+    const context = await this.loadContext(booking.segments.map((segment) => segment.flightId));
+    return { booking, context };
+  }
+
+  /**
+   * FLT-26/FLT-09: refund = the outbound airline's tier for the whole days left before the outbound departure, applied
+   * to the amount paid. Only Confirmed bookings whose outbound flight hasn't departed can be cancelled.
+   */
+  private quote(booking: BookingRecord, context: BookingContext): CancellationQuoteDto {
+    const outbound = context.flights.get(booking.segments[0].flightId.toString());
+    const airline = outbound ? context.airlines.get(outbound.airlineId.toString()) : undefined;
+    const totalPaid = booking.payment?.status === PaymentIntentStatus.SUCCEEDED ? booking.payment.amount : 0;
+    const base = { bookingId: booking._id.toString(), totalPaid, daysBeforeDeparture: 0, refundPercentage: 0, refundAmount: 0 };
+
+    if (booking.status !== BookingStatus.CONFIRMED) {
+      return { ...base, cancellable: false, reason: `Only confirmed bookings can be cancelled (this one is ${booking.status}).` };
+    }
+    if (!outbound) return { ...base, cancellable: false, reason: 'The flight of this booking no longer exists.' };
+    if (outbound.departure.timestamp <= new Date()) {
+      return { ...base, cancellable: false, reason: 'The flight has already departed, so the booking can no longer be cancelled.' };
+    }
+    const daysLeft = daysBeforeService(outbound.departure.timestamp);
+    const percentage = refundPercentage(airline?.cancellationPolicies ?? [], daysLeft);
+    return {
+      ...base,
+      daysBeforeDeparture: daysLeft,
+      refundPercentage: percentage,
+      refundAmount: refundAmount(totalPaid, percentage),
+      cancellable: true,
+      reason: null,
+    };
+  }
+
+  /** PAY-01: best effort; a failure is logged and the next sweep doesn't retry (the hold is already gone). */
+  private async cancelPaymentIntent(paymentIntentId: string): Promise<void> {
+    try {
+      await this.stripeService.stripe.paymentIntents.cancel(paymentIntentId);
+    } catch (error) {
+      this.logger.warn(`Could not cancel PaymentIntent ${paymentIntentId}: ${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   /**
@@ -351,7 +553,7 @@ export class FlightBookingsService {
     const flights = await this.flightModel.find({ _id: { $in: flightIds } }).lean<FlightRecord[]>().exec();
     const airlines = await this.airlineModel
       .find({ _id: { $in: flights.map((flight) => flight.airlineId) } })
-      .select('name iataCode status bagPolicy')
+      .select('name iataCode status bagPolicy cancellationPolicies')
       .lean<AirlineRecord[]>()
       .exec();
     const airports = await this.airportModel

@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { RefundResponseDto } from '../../payments/dto/payment.dto.js';
 import { BookingStatus, PassengerType } from '../../database/schemas/expense.schema.js';
 import { CabinType } from '../../database/schemas/flight.schema.js';
 
@@ -68,4 +69,25 @@ export class FlightBookingListResponseDto {
   @ApiProperty({ type: FlightBookingGroupPageDto }) upcoming: FlightBookingGroupPageDto;
   @ApiProperty({ type: FlightBookingGroupPageDto }) past: FlightBookingGroupPageDto;
   @ApiProperty({ type: FlightBookingGroupPageDto }) cancelled: FlightBookingGroupPageDto;
+}
+
+// FLT-26: what cancelling now would refund, shown before the user confirms
+export class CancellationQuoteDto {
+  @ApiProperty() bookingId: string;
+  @ApiProperty({ description: 'Whether the booking can be cancelled now' }) cancellable: boolean;
+  @ApiProperty({ nullable: true, type: String, description: 'Why it cannot be cancelled' }) reason: string | null;
+  @ApiProperty({ description: 'Amount paid in cents', example: 99500 }) totalPaid: number;
+  @ApiProperty({ description: 'Whole days left before the outbound departure', example: 12 }) daysBeforeDeparture: number;
+  @ApiProperty({ description: "From the airline's cancellation tiers (FLT-09)", example: 50 }) refundPercentage: number;
+  @ApiProperty({ description: 'Refund in cents', example: 49750 }) refundAmount: number;
+}
+
+// FLT-26, PAY-03: the cancelled booking and its refund
+export class CancelFlightBookingResponseDto {
+  @ApiProperty({ type: FlightBookingResponseDto }) booking: FlightBookingResponseDto;
+  @ApiProperty({ example: 50 }) refundPercentage: number;
+  @ApiProperty({ description: 'Refund in cents', example: 49750 }) refundAmount: number;
+  @ApiProperty({ type: RefundResponseDto, nullable: true, description: 'null when nothing is refunded' }) refund: RefundResponseDto | null;
+  @ApiProperty({ nullable: true, type: String, description: 'Set if the booking was cancelled but Stripe refused the refund' })
+  refundError: string | null;
 }

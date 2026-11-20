@@ -83,18 +83,18 @@ export enum BookingStatus {
     CANCELLED = 'cancelled'
 }
 
-export enum CheckoutSessionStatus {
-    OPEN = 'open',
-    COMPLETE = 'complete',
-    EXPIRED = 'expired'
+// PAY-01: Stripe PaymentIntent statuses (https://docs.stripe.com/payments/paymentintents/lifecycle)
+export enum PaymentIntentStatus {
+    REQUIRES_PAYMENT_METHOD = 'requires_payment_method',
+    REQUIRES_CONFIRMATION = 'requires_confirmation',
+    REQUIRES_ACTION = 'requires_action',
+    PROCESSING = 'processing',
+    REQUIRES_CAPTURE = 'requires_capture',
+    CANCELED = 'canceled',
+    SUCCEEDED = 'succeeded'
 }
 
-export enum CheckoutPaymentStatus {
-    PAID = 'paid',
-    UNPAID = 'unpaid',
-    NO_PAYMENT_REQUIRED = 'no_payment_required'
-}
-
+// PAY-01: only the Stripe payment id, amount, currency and status are stored (never card details)
 @Schema({ _id: false })
 export class Payment {
     @Prop({
@@ -104,49 +104,37 @@ export class Payment {
         minlength: 1,
         maxlength: 255
     })
-    stripeCheckoutSessionId: string;
+    paymentIntentId: string;
 
+    // Integer cents
     @Prop({
         type: Number,
+        required: true,
         min: 0,
-        validate: Number.isSafeInteger,
-        default: null
+        validate: Number.isSafeInteger
     })
-    amountTotal: number | null;
+    amount: number;
 
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: String,
+        required: true,
         lowercase: true,
         minlength: 3,
         maxlength: 3,
-        match: /^[a-z]{3}$/,
-        default: null
+        match: /^[a-z]{3}$/
     })
-    currency: string | null;
+    currency: string;
 
     @Prop({
         type: String,
-        enum: Object.values(CheckoutSessionStatus),
-        default: null
+        enum: Object.values(PaymentIntentStatus),
+        required: true
     })
-    status: CheckoutSessionStatus | null;
+    status: PaymentIntentStatus;
 
-    @Prop({
-        type: String,
-        enum: Object.values(CheckoutPaymentStatus),
-        default: null
-    })
-    paymentStatus: CheckoutPaymentStatus | null;
-
-    @Prop({ type: [String], default: [] })
-    paymentMethodTypes: string[];
-
-    @Prop({ type: String, default: null })
-    paymentIntentId: string | null;
-
-    @Prop({ type: Date, default: null })
-    expiresAt: Date | null;
+    // Why the last attempt failed (Stripe's message), shown so the user can retry
+    @Prop({ type: String, default: null, maxlength: 500 })
+    lastError: string | null;
 }
 
 @Schema({
@@ -156,6 +144,16 @@ export class Payment {
     minimize: true
 })
 export class Refund {
+    // PAY-03: the cancelled booking this refund belongs to, and its owner (for GET /api/refunds/:id)
+    @Prop({ type: Types.ObjectId, required: true, index: true })
+    bookingId: Types.ObjectId;
+
+    @Prop({ type: String, enum: ['flight', 'hotel'], required: true })
+    bookingType: 'flight' | 'hotel';
+
+    @Prop({ type: Types.ObjectId, ref: User.name, required: true, index: true })
+    userId: Types.ObjectId;
+
     @Prop({
         type: String,
         required: true,
@@ -231,7 +229,7 @@ export class Booking extends Expense {
     })
     status: BookingStatus;
 
-    // TODO: Get back to it after changing the Stripe API
+    // PAY-01: the Stripe PaymentIntent for this booking; null until the user starts paying
     @Prop({
         type: Payment,
         default: null
