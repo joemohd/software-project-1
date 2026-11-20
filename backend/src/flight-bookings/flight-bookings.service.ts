@@ -55,6 +55,7 @@ import {
   FlightBookingResponseDto,
 } from './dto/flight-booking-response.dto.js';
 import { ListFlightBookingsQueryDto } from './dto/list-flight-bookings.dto.js';
+import { SeatAssignmentInputDto, SelectSeatDto } from './dto/select-seat.dto.js';
 import {
   FLIGHT_CHANGE_PURPOSE,
   HOLD_MINUTES,
@@ -804,6 +805,242 @@ export class FlightBookingsService {
     }
   }
 
+  // ---------- FLT-28: seat selection ----------
+
+  /**
+   * FLT-28: selects or changes seat assignments for one or more seated passengers on the user's Confirmed or active
+   * Pending Payment booking. Reserves any newly chosen seat(s) atomically on the flight first, updates the booking,
+   * and releases the previously assigned seat(s) back to available.
+   */
+  async selectSeat(userId: string, bookingId: string, dto: SelectSeatDto): Promise<FlightBookingResponseDto> {
+    const rawInputs: SeatAssignmentInputDto[] = dto.seats?.length ? dto.seats : [dto];
+    if (dto.seats?.length && (dto.seat !== undefined || dto.row !== undefined || dto.column !== undefined)) {
+      throw new BadRequestException('Provide either top-level seat fields or the seats array, not both.');
+    }
+
+    const parsedSelections = rawInputs.map((item) => {
+      const { row, column } = parseSeatInput(item);
+      return {
+        segmentIndex: item.segmentIndex ?? 0,
+        passengerIndex: item.passengerIndex ?? 0,
+        row,
+        column,
+      };
+    });
+
+    const { booking, context } = await this.loadOwned(userId, bookingId);
+    if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.PENDING_PAYMENT) {
+      throw new ConflictException(
+        `Seats can only be selected on a confirmed or pending-payment booking (this one is ${booking.status}).`,
+      );
+    }
+
+    const seatState =
+      booking.status === BookingStatus.CONFIRMED ? SeatAvailability.BOOKED : SeatAvailability.HELD;
+
+    const seenPassengerSegment = new Set<string>();
+    const bySegment = new Map<number, { passengerIndex: number; row: number; column: string }[]>();
+
+    for (const item of parsedSelections) {
+      const key = `${item.segmentIndex}:${item.passengerIndex}`;
+      if (seenPassengerSegment.has(key)) {
+        throw new BadRequestException(
+          `Duplicate seat selection for passenger ${item.passengerIndex + 1} on segment ${item.segmentIndex}.`,
+        );
+      }
+      seenPassengerSegment.add(key);
+
+      if (item.segmentIndex < 0 || item.segmentIndex >= booking.segments.length) {
+        throw new BadRequestException('This booking has no return flight segment.');
+      }
+      const passenger = booking.passengers[item.passengerIndex];
+      if (!passenger) {
+        throw new BadRequestException(`Passenger index ${item.passengerIndex} is out of range.`);
+      }
+      if (passenger.type === PassengerType.INFANT) {
+        throw new BadRequestException("Infants travel on an adult's lap and cannot be assigned a seat.");
+      }
+
+      const list = bySegment.get(item.segmentIndex) ?? [];
+      list.push({ passengerIndex: item.passengerIndex, row: item.row, column: item.column });
+      bySegment.set(item.segmentIndex, list);
+    }
+
+    type SegmentSeatPlan = {
+      segmentIndex: number;
+      flight: FlightRecord;
+      cabinName: CabinType;
+      nextSeats: { passengerIndex: number; row: number; column: string }[];
+      seatsToAcquire: SeatCoordinate[];
+      seatsToRelease: SeatCoordinate[];
+    };
+
+    const plans: SegmentSeatPlan[] = [];
+
+    for (const [segmentIndex, selections] of bySegment.entries()) {
+      const segment = booking.segments[segmentIndex];
+      const flight = context.flights.get(segment.flightId.toString());
+      if (!flight) throw new NotFoundException(`Flight ${segment.flightId.toString()} of this booking no longer exists.`);
+      if (!isOpenForBooking(flight)) {
+        throw new ConflictException('This flight has already departed or is not scheduled, so seats can no longer be changed.');
+      }
+
+      const cabin = flight.cabins.find((candidate) => candidate.name === segment.cabinName);
+      if (!cabin) throw new BadRequestException(`This flight has no ${segment.cabinName} cabin.`);
+
+      const nextByPassenger = new Map<number, { passengerIndex: number; row: number; column: string }>(
+        segment.seats.map((seat) => [
+          seat.passengerIndex,
+          { passengerIndex: seat.passengerIndex, row: seat.row, column: seat.column },
+        ]),
+      );
+      for (const selection of selections) {
+        const seatInCabin = cabin.seats.find((s) => s.row === selection.row && s.column === selection.column);
+        if (!seatInCabin) {
+          const otherCabin = flight.cabins.find(
+            (c) => c.name !== segment.cabinName && c.seats.some((s) => s.row === selection.row && s.column === selection.column),
+          );
+          if (otherCabin) {
+            throw new BadRequestException(
+              `Seat ${selection.row}${selection.column} is in ${otherCabin.name}, not in your booked cabin (${segment.cabinName}).`,
+            );
+          }
+          throw new BadRequestException(
+            `Seat ${selection.row}${selection.column} does not exist in ${segment.cabinName} on this flight.`,
+          );
+        }
+        nextByPassenger.set(selection.passengerIndex, selection);
+      }
+
+      const nextSeats = [...nextByPassenger.values()].sort((a, b) => a.passengerIndex - b.passengerIndex);
+      const occupiedCoords = new Set<string>();
+      for (const seat of nextSeats) {
+        const coord = `${seat.row}:${seat.column}`;
+        if (occupiedCoords.has(coord)) {
+          throw new BadRequestException(
+            `Seat ${seat.row}${seat.column} cannot be assigned to more than one passenger on the same flight.`,
+          );
+        }
+        occupiedCoords.add(coord);
+      }
+
+      const currentCoords = new Set(segment.seats.map((seat) => `${seat.row}:${seat.column}`));
+      const seatsToAcquire = nextSeats
+        .filter((seat) => !currentCoords.has(`${seat.row}:${seat.column}`))
+        .map(({ row, column }) => ({ row, column }));
+      const seatsToRelease = segment.seats
+        .filter((seat) => !occupiedCoords.has(`${seat.row}:${seat.column}`))
+        .map(({ row, column }) => ({ row, column }));
+
+      for (const { row, column } of seatsToAcquire) {
+        const seatInCabin = cabin.seats.find((s) => s.row === row && s.column === column)!;
+        if (seatInCabin.availability !== SeatAvailability.AVAILABLE) {
+          throw new ConflictException(`Seat ${row}${column} is not available (${seatInCabin.availability}).`);
+        }
+      }
+
+      plans.push({
+        segmentIndex,
+        flight,
+        cabinName: segment.cabinName,
+        nextSeats,
+        seatsToAcquire,
+        seatsToRelease,
+      });
+    }
+
+    const acquired: HeldSegment[] = [];
+    try {
+      for (const plan of plans) {
+        if (!plan.seatsToAcquire.length) continue;
+        const ok = await this.tryAcquireSeats(plan.flight._id, plan.cabinName, plan.seatsToAcquire, seatState);
+        if (!ok) {
+          throw new ConflictException('The selected seat was taken by another booking at the same time. Please choose a different seat.');
+        }
+        acquired.push({ flightId: plan.flight._id, cabinName: plan.cabinName, seats: plan.seatsToAcquire });
+      }
+    } catch (error) {
+      await this.releaseSeatsWithState(acquired, seatState);
+      throw error;
+    }
+
+    const setUpdates: Record<string, unknown> = {};
+    for (const plan of plans) {
+      setUpdates[`segments.${plan.segmentIndex}.seats`] = plan.nextSeats;
+    }
+
+    let updatedBooking: BookingRecord | null = null;
+    try {
+      updatedBooking = await this.bookingModel
+        .findOneAndUpdate(
+          { _id: booking._id, userId: booking.userId, status: booking.status },
+          { $set: setUpdates },
+          { returnDocument: 'after' },
+        )
+        .lean<BookingRecord>()
+        .exec();
+    } catch (error) {
+      await this.releaseSeatsWithState(acquired, seatState);
+      throw error;
+    }
+
+    if (!updatedBooking) {
+      await this.releaseSeatsWithState(acquired, seatState);
+      throw new ConflictException('The booking status changed at the same time. Please try again.');
+    }
+
+    const released: HeldSegment[] = plans
+      .filter((plan) => plan.seatsToRelease.length > 0)
+      .map((plan) => ({ flightId: plan.flight._id, cabinName: plan.cabinName, seats: plan.seatsToRelease }));
+    await this.releaseSeatsWithState(released, seatState);
+
+    return this.toResponse(updatedBooking, context);
+  }
+
+  /** Atomically reserves specific AVAILABLE seats on a flight into the target state (HELD or BOOKED). */
+  private async tryAcquireSeats(
+    flightId: Types.ObjectId,
+    cabinName: CabinType,
+    seats: SeatCoordinate[],
+    targetState: SeatAvailability,
+  ): Promise<boolean> {
+    const updated = await this.flightModel
+      .findOneAndUpdate(
+        {
+          _id: flightId,
+          status: FlightStatus.SCHEDULED,
+          'departure.timestamp': { $gt: new Date() },
+          $and: seats.map(({ row, column }) => ({
+            cabins: {
+              $elemMatch: {
+                name: cabinName,
+                seats: { $elemMatch: { row, column, availability: SeatAvailability.AVAILABLE } },
+              },
+            },
+          })),
+        },
+        { $set: { 'cabins.$[cabin].seats.$[seat].availability': targetState } },
+        { arrayFilters: seatArrayFilters(cabinName, seats, SeatAvailability.AVAILABLE), projection: { _id: 1 } },
+      )
+      .lean()
+      .exec();
+    return updated !== null;
+  }
+
+  /** Releases seats in `fromState` (HELD or BOOKED) back to AVAILABLE. */
+  private async releaseSeatsWithState(segments: HeldSegment[], fromState: SeatAvailability): Promise<void> {
+    for (const { flightId, cabinName, seats } of segments) {
+      if (!seats.length) continue;
+      await this.flightModel
+        .updateOne(
+          { _id: flightId },
+          { $set: { 'cabins.$[cabin].seats.$[seat].availability': SeatAvailability.AVAILABLE } },
+          { arrayFilters: seatArrayFilters(cabinName, seats, fromState) },
+        )
+        .exec();
+    }
+  }
+
   /** FLT-23: the e-ticket PDF of a Confirmed (or Completed) booking. */
   async eTicket(userId: string, bookingId: string): Promise<{ fileName: string; pdf: Buffer }> {
     const { booking, context } = await this.loadOwned(userId, bookingId);
@@ -1108,4 +1345,24 @@ function seatArrayFilters(cabinName: CabinType, seats: SeatCoordinate[], availab
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** FLT-28: parses either a combined seat code ("12A") or separate row + column fields. */
+function parseSeatInput(item: SeatAssignmentInputDto): SeatCoordinate {
+  if (item.seat !== undefined) {
+    const match = /^([1-9]\d*)([A-Z])$/.exec(item.seat.trim().toUpperCase());
+    if (!match) {
+      throw new BadRequestException('seat must be a row number followed by a seat letter (e.g. "12A").');
+    }
+    const row = Number(match[1]);
+    const column = match[2];
+    if ((item.row !== undefined && item.row !== row) || (item.column !== undefined && item.column !== column)) {
+      throw new BadRequestException('seat does not match row and column.');
+    }
+    return { row, column };
+  }
+  if (item.row !== undefined && item.column !== undefined) {
+    return { row: item.row, column: item.column.trim().toUpperCase() };
+  }
+  throw new BadRequestException('Provide a seat (e.g. "12A") or both row and column.');
 }

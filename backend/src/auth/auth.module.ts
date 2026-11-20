@@ -37,6 +37,6 @@ import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
   controllers: [AuthController],
-  exports: [JwtModule, MongooseModule, ConfigModule],
+  exports: [JwtModule, MongooseModule, ConfigModule, MailService],
 })
 export class AuthModule {}

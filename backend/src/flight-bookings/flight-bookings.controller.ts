@@ -25,6 +25,7 @@ import {
   FlightBookingResponseDto,
 } from './dto/flight-booking-response.dto.js';
 import { ListFlightBookingsQueryDto } from './dto/list-flight-bookings.dto.js';
+import { SelectSeatDto } from './dto/select-seat.dto.js';
 import { FlightBookingsService } from './flight-bookings.service.js';
 
 // FLT-19, FLT-25: registered users book and see their own bookings (moderators and admins get 403); email verification
@@ -178,5 +179,30 @@ export class FlightBookingsController {
     @Body() dto: ChangeFlightDto,
   ): Promise<ChangeFlightResponseDto> {
     return this.flightBookingsService.changeFlight(userId, bookingId, dto);
+  }
+
+  // PATCH /api/flight-bookings/:id/seat (FLT-28)
+  @Patch(':id/seat')
+  @ApiOperation({
+    summary: 'Select or change seat assignments on your flight booking (FLT-28)',
+    description:
+      'Assigns specific available seats in the booked cabin for one or more seated passengers on an outbound (segmentIndex 0) or return (segmentIndex 1) flight segment. ' +
+      'Atomically reserves the new seat(s) on the flight and releases the previous seat(s). Infants travel on an adult\'s lap and have no seat.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking id' })
+  @ApiOkResponse({ type: FlightBookingResponseDto })
+  @ApiBadRequestResponse({
+    description: 'Invalid seat format, segmentIndex or passengerIndex out of range, infant passenger, duplicate seat, or seat not in the booked cabin',
+  })
+  @ApiNotFoundResponse({ description: "Booking not found (also when it is someone else's)" })
+  @ApiConflictResponse({
+    description: 'Booking not Confirmed or Pending Payment, flight already departed or not Scheduled, or the chosen seat is already taken',
+  })
+  selectSeat(
+    @CurrentUser('id') userId: string,
+    @Param('id') bookingId: string,
+    @Body() dto: SelectSeatDto,
+  ): Promise<FlightBookingResponseDto> {
+    return this.flightBookingsService.selectSeat(userId, bookingId, dto);
   }
 }

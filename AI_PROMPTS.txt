@@ -588,7 +588,6 @@ PROMPT: Let's remove it.
 RESPONSE: Removed roundTripFlightId and its validation check from flight.schema.ts. The backend build and test suite are currently running; waiting for the results.
 
 
-
 STUDENT: Youssef Mohamed
 DATE: 2026-11-20
 AGENT: Antigravity
@@ -613,5 +612,30 @@ RESPONSE: Implemented all six endpoints with Mongoose schemas, DTOs, Swagger doc
 2. Implemented `AdminModerationController` and `AdminModerationService` (`GET /api/admin/audit-logs`, `GET /api/admin/reports`, `PATCH /api/admin/reports/:id`, `DELETE /api/admin/content/:type/:id`) with MongoDB transactions, content hiding/deletion across posts, comments, reviews (with hotel averageRating recalculation), and itineraries, and atomic audit logging.
 3. Implemented `FlightSearchController` and `FlightSearchService` (`GET /api/flights/search`, FLT-11, FLT-12, FLT-15) supporting one-way and round-trip searches in the departure airport's IANA time zone, passenger mix rules (`adults >= 1`, `infants <= adults`, seated = `adults + children`, infants at 10% fare), optional cabin and min/max price filtering, sorting by price/duration/departureTime, and 10-item pagination.
 4. Implemented `ItinerariesController` and `ItinerariesService` (`GET /api/itineraries/:id/flights`, ITN-26) verifying ownership/visibility, resolving all airports in the city of the itinerary's first day, defaulting outbound/return dates to the itinerary's start and last day dates, and reusing `FlightSearchService`.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: Okay implement all in a high quality. I want everything to work fine. Refer to the docs if there are any issues. Create the appropriate branch from dev.
+
+|`POST`|`/api/admin/moderators`|`ACC-13`|
+|`GET`|`/api/admin/accounts`|`ACC-14`|
+|`PATCH`|`/api/admin/accounts/:id/suspend`|`ACC-15`, `ACC-16`|
+|`PATCH`|`/api/admin/accounts/:id/reactivate`|`ACC-15`, `ACC-16`|
+|`PATCH`|`/api/admin/providers/:type/:id/deactivate`|`ACC-15`|
+|`PATCH`|`/api/admin/providers/:type/:id/reactivate`|`ACC-15`|
+|`GET`|`/api/admin/bookings`|`ACC-17`|
+|`PATCH`|`/api/flight-bookings/:id/seat`|`FLT-28`|
+
+------------------------------------------------
+
+RESPONSE: Created branch `feat/ACC-13-14-15-16-17-FLT-28` from `origin/dev` and implemented all eight endpoints with DTO validation, Swagger decorators, transactional updates, audit logging, and unit tests:
+1. Added admin account and provider management endpoints (`POST /api/admin/moderators`, `GET /api/admin/accounts`, `PATCH /api/admin/accounts/:id/suspend`, `PATCH /api/admin/accounts/:id/reactivate`, `PATCH /api/admin/providers/:type/:id/deactivate`, `PATCH /api/admin/providers/:type/:id/reactivate`) and read-only bookings listing (`GET /api/admin/bookings`) in `AdminUsersController` and `AdminService` (`ACC-13`, `ACC-14`, `ACC-15`, `ACC-16`, `ACC-17`, `GEN-07`).
+2. Added seat selection (`PATCH /api/flight-bookings/:id/seat`) in `FlightBookingsController` and `FlightBookingsService` (`FLT-28`) with atomic seat reservation on the flight and release of previous seats.
 
 ================================================
