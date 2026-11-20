@@ -151,6 +151,10 @@ export class Refund {
     @Prop({ type: String, enum: ['flight', 'hotel'], required: true })
     bookingType: 'flight' | 'hotel';
 
+    // FLT-27: set when the refund is for a flight change (lower fare); null for a cancellation refund
+    @Prop({ type: Types.ObjectId, default: null })
+    changeId: Types.ObjectId | null;
+
     @Prop({ type: Types.ObjectId, ref: User.name, required: true, index: true })
     userId: Types.ObjectId;
 
@@ -422,6 +426,52 @@ export class FlightPassenger {
     extraBagWeights: number[];
 }
 
+// FLT-27: a change to another flight that costs more, waiting for the fare difference to be paid.
+// The new seats are held until holdExpiresAt; the booking keeps its current flight until the payment succeeds.
+@Schema({ _id: false })
+export class PendingFlightChange {
+    @Prop({ type: Types.ObjectId, required: true })
+    changeId: Types.ObjectId;
+
+    // 0 = outbound, 1 = return
+    @Prop({ type: Number, required: true, min: 0, max: 1, validate: Number.isInteger })
+    segmentIndex: number;
+
+    @Prop({ type: FlightSegment, required: true })
+    segment: FlightSegment;
+
+    // Integer cents: the booking's fare total once the change is applied
+    @Prop({ type: Number, required: true, min: 0, validate: Number.isSafeInteger })
+    fareTotal: number;
+
+    // Integer cents: the fare difference to pay
+    @Prop({ type: Number, required: true, min: 1, validate: Number.isSafeInteger })
+    amountDue: number;
+
+    @Prop({ type: String, required: true, maxlength: 255 })
+    paymentIntentId: string;
+
+    @Prop({ type: String, enum: Object.values(PaymentIntentStatus), required: true })
+    paymentStatus: PaymentIntentStatus;
+
+    @Prop({ type: String, default: null, maxlength: 500 })
+    lastError: string | null;
+
+    @Prop({ type: Date, required: true })
+    holdExpiresAt: Date;
+}
+
+// FLT-27: a fare difference paid for a flight change (its own Stripe PaymentIntent), kept so refunds can use it
+@Schema({ _id: false })
+export class ExtraPayment {
+    @Prop({ type: String, required: true, maxlength: 255 })
+    paymentIntentId: string;
+
+    // Integer cents
+    @Prop({ type: Number, required: true, min: 0, validate: Number.isSafeInteger })
+    amount: number;
+}
+
 @Schema({
     timestamps: true,
     strict: 'throw',
@@ -479,6 +529,14 @@ export class FlightBooking extends Booking {
 
     @Prop({ type: Date, default: null })
     holdExpiresAt: Date | null;
+
+    // FLT-27: a flight change waiting for its fare difference to be paid
+    @Prop({ type: PendingFlightChange, default: null })
+    pendingChange: PendingFlightChange | null;
+
+    // FLT-27: fare differences paid for flight changes
+    @Prop({ type: [ExtraPayment], default: [] })
+    extraPayments: ExtraPayment[];
 }
 
 @Schema({

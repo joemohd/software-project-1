@@ -4,6 +4,9 @@ import Stripe from 'stripe';
 // PAY-04: one platform currency for every price, payment and refund
 export const PLATFORM_CURRENCY = 'usd';
 
+// Stripe's smallest charge in USD (cents)
+export const MIN_CHARGE_CENTS = 50;
+
 /**
  * PAY-01, PAY-03: the one place that talks to Stripe. The client is created on first use, so teammates without a
  * STRIPE_SECRET_KEY can still start the app; only payment routes then answer 503.

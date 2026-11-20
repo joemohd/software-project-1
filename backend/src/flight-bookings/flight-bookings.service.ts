@@ -9,16 +9,25 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model, Types } from 'mongoose';
+import Stripe from 'stripe';
 import { Airport } from '../database/schemas/airport.schema.js';
 import { City } from '../database/schemas/city.schema.js';
-import { BookingStatus, FlightBooking, PassengerType, PaymentIntentStatus } from '../database/schemas/expense.schema.js';
+import {
+  BookingStatus,
+  FlightBooking,
+  FlightSegment,
+  PassengerType,
+  PaymentIntentStatus,
+  PendingFlightChange,
+} from '../database/schemas/expense.schema.js';
 import { CabinType, Flight, FlightStatus, SeatAvailability } from '../database/schemas/flight.schema.js';
 import { Airline, ProviderStatus } from '../database/schemas/provider.schema.js';
 import { buildTextPdf, PdfLine } from '../common/pdf/simple-pdf.js';
 import { utcToLocal } from '../flights/flight-time.js';
 import { daysBeforeService, refundAmount, refundPercentage } from '../payments/refund-policy.js';
-import { RefundsService, toRefundResponse } from '../payments/refunds.service.js';
-import { StripeService } from '../payments/stripe.service.js';
+import type { TestPaymentMethod } from '../payments/dto/payment.dto.js';
+import { RefundSource, RefundsService, toRefundResponse } from '../payments/refunds.service.js';
+import { MIN_CHARGE_CENTS, PLATFORM_CURRENCY, StripeService } from '../payments/stripe.service.js';
 import { PAGE_SIZE } from '../flights/flights.constants.js';
 import { BOOKING_GROUPS, BookingGroup, bookingListPipeline, GroupPages } from './booking-list.js';
 import {
@@ -36,6 +45,7 @@ import {
   SeatCoordinate,
   segmentFare,
 } from './booking-rules.js';
+import { ChangeFlightDto, ChangeFlightResponseDto, ChangePaymentDto } from './dto/change-flight.dto.js';
 import { CreateFlightBookingDto } from './dto/create-flight-booking.dto.js';
 import {
   BookingAirportDto,
@@ -45,7 +55,13 @@ import {
   FlightBookingResponseDto,
 } from './dto/flight-booking-response.dto.js';
 import { ListFlightBookingsQueryDto } from './dto/list-flight-bookings.dto.js';
-import { HOLD_MINUTES, HOLD_SWEEP_BATCH_SIZE, MAX_HOLD_RETRIES, REFERENCE_ATTEMPTS } from './flight-bookings.constants.js';
+import {
+  FLIGHT_CHANGE_PURPOSE,
+  HOLD_MINUTES,
+  HOLD_SWEEP_BATCH_SIZE,
+  MAX_HOLD_RETRIES,
+  REFERENCE_ATTEMPTS,
+} from './flight-bookings.constants.js';
 
 type FlightRecord = Flight & { _id: Types.ObjectId };
 type AirlineRecord = {
@@ -244,11 +260,12 @@ export class FlightBookingsService {
     const userObjectId = new Types.ObjectId(userId);
     await this.expireOverdueHolds({ userId: userObjectId });
 
-    const booking = await this.bookingModel
+    const found = await this.bookingModel
       .findOne({ _id: bookingId, userId: userObjectId })
       .lean<BookingRecord>()
       .exec();
-    if (!booking) throw new NotFoundException(BOOKING_NOT_FOUND);
+    if (!found) throw new NotFoundException(BOOKING_NOT_FOUND);
+    const booking = await this.refreshPendingChange(found);
 
     const context = await this.loadContext(booking.segments.map((segment) => segment.flightId));
     return this.toResponse(booking, context);
@@ -288,7 +305,29 @@ export class FlightBookingsService {
       }
       expired += 1;
     }
-    return expired;
+    return expired + (await this.expireOverdueChanges(scope));
+  }
+
+  /**
+   * FLT-27: flight changes whose fare difference wasn't paid within the hold are dropped and their new seats released.
+   * The booking keeps its current flight.
+   */
+  private async expireOverdueChanges(scope: { flightIds?: Types.ObjectId[]; userId?: Types.ObjectId }): Promise<number> {
+    const overdue = await this.bookingModel
+      .find({
+        'pendingChange.holdExpiresAt': { $lte: new Date() },
+        ...(scope.flightIds ? { 'pendingChange.segment.flightId': { $in: scope.flightIds } } : {}),
+        ...(scope.userId ? { userId: scope.userId } : {}),
+      })
+      .select('userId pendingChange')
+      .limit(HOLD_SWEEP_BATCH_SIZE)
+      .lean<Pick<BookingRecord, '_id' | 'userId' | 'pendingChange'>[]>()
+      .exec();
+    let dropped = 0;
+    for (const booking of overdue) {
+      if (booking.pendingChange && (await this.discardPendingChange(booking._id, booking.userId, booking.pendingChange))) dropped += 1;
+    }
+    return dropped;
   }
 
 
@@ -347,6 +386,8 @@ export class FlightBookingsService {
       .lean<BookingRecord>()
       .exec();
     if (!cancelled) throw new ConflictException('This booking was already cancelled.');
+    // FLT-27: a change waiting for payment is dropped with the booking
+    if (cancelled.pendingChange) await this.discardPendingChange(cancelled._id, cancelled.userId, cancelled.pendingChange);
 
     for (const { flightId, cabinName, seats } of cancelled.segments) {
       if (!seats.length) continue;
@@ -363,13 +404,12 @@ export class FlightBookingsService {
     let refundError: string | null = null;
     if (quote.refundAmount > 0 && cancelled.payment) {
       try {
-        const saved = await this.refundsService.issue({
-          bookingId: cancelled._id,
-          bookingType: 'flight',
-          userId: cancelled.userId,
-          paymentIntentId: cancelled.payment.paymentIntentId,
-          amount: quote.refundAmount,
-        });
+        // FLT-27: after a flight change the money may have been paid in more than one payment
+        const [saved] = await this.refundsService.issueAcross(
+          { bookingId: cancelled._id, bookingType: 'flight', userId: cancelled.userId },
+          paymentSources(cancelled),
+          quote.refundAmount,
+        );
         refund = saved ? toRefundResponse(saved) : null;
       } catch (error) {
         // The cancellation stands; the refund failure is reported so it can be followed up
@@ -386,6 +426,382 @@ export class FlightBookingsService {
       refund,
       refundError,
     };
+  }
+
+  // ---------- FLT-27: change flight ----------
+
+  /**
+   * FLT-27: moves one flight of the user's Confirmed booking to another flight on the same route, with the same cabin
+   * and airline, for all its passengers. The new seats are held first, atomically, as in FLT-22.
+   * - Lower or equal fare: the change is applied at once and the difference is refunded through Stripe (PAY-03).
+   * - Higher fare: the new seats stay held for 10 minutes as a pending change, and the change is applied only after
+   *   Stripe confirms that the difference was paid (PAY-01). Until then the booking keeps its current flight.
+   */
+  async changeFlight(userId: string, bookingId: string, dto: ChangeFlightDto): Promise<ChangeFlightResponseDto> {
+    if (dto.testPaymentMethod && !this.stripeService.isTestMode) {
+      throw new BadRequestException('testPaymentMethod only works with a Stripe test key (sk_test_...).');
+    }
+    const { booking } = await this.loadOwned(userId, bookingId);
+    if (booking.status !== BookingStatus.CONFIRMED || booking.payment?.status !== PaymentIntentStatus.SUCCEEDED) {
+      throw new ConflictException(`Only confirmed, paid bookings can be changed (this one is ${booking.status}).`);
+    }
+    const segmentIndex = dto.segmentIndex ?? 0;
+    const current = booking.segments[segmentIndex];
+    if (!current) throw new BadRequestException('This booking has no return flight to change.');
+    if (current.flightId.equals(dto.flightId)) throw new BadRequestException('The booking is already on this flight.');
+
+    const newFlightId = new Types.ObjectId(dto.flightId);
+    await this.expireOverdueHolds({ flightIds: [newFlightId] });
+    const context = await this.loadContext([...booking.segments.map((segment) => segment.flightId), newFlightId]);
+    const oldFlight = context.flights.get(current.flightId.toString());
+    const newFlight = context.flights.get(dto.flightId);
+    if (!newFlight) throw new NotFoundException(`Flight ${dto.flightId} not found.`);
+    if (!oldFlight || oldFlight.departure.timestamp <= new Date()) {
+      throw new ConflictException('This flight has already departed, so it can no longer be changed.');
+    }
+    assertSameRoute(oldFlight, newFlight);
+    if (!newFlight.airlineId.equals(oldFlight.airlineId)) throw new BadRequestException('The new flight must be with the same airline.');
+    if (!isOpenForBooking(newFlight)) {
+      throw new ConflictException(`The new flight is ${newFlight.status === FlightStatus.SCHEDULED ? 'departed' : newFlight.status}, so it can't be booked.`);
+    }
+    const airline = context.airlines.get(newFlight.airlineId.toString());
+    if (airline?.status !== ProviderStatus.ACTIVE) throw new ConflictException("The airline is not active, so the new flight can't be booked.");
+    const cabin = newFlight.cabins.find((candidate) => candidate.name === current.cabinName);
+    if (!cabin) throw new BadRequestException(`The new flight has no ${current.cabinName} cabin.`);
+
+    // A round trip must still return after the outbound flight lands
+    const flights = booking.segments.map((segment, index) => (index === segmentIndex ? newFlight : context.flights.get(segment.flightId.toString())));
+    if (flights[0] && flights[1]) assertReturnTrip(flights[0], flights[1]);
+
+    // FLT-19: passenger types come from age on the outbound date, so a new outbound date must not change them
+    if (segmentIndex === 0) {
+      const departureZone = this.airportOf(context, newFlight.departure.airportId).timeZone;
+      const departureDate = utcToLocal(newFlight.departure.timestamp, departureZone).slice(0, 10);
+      booking.passengers.forEach((passenger, index) => {
+        const type = passengerTypeOn(passenger.dateOfBirth.toISOString().slice(0, 10), departureDate, `Passenger ${index + 1}`);
+        if (type !== passenger.type) {
+          throw new BadRequestException(
+            `Passenger ${index + 1} would travel as ${type} instead of ${passenger.type} on the new date. Please make a new booking instead.`,
+          );
+        }
+      });
+    }
+    assertBaggage(
+      booking.passengers.map((passenger) => passenger.extraBagWeights ?? []),
+      { maxExtraBagCount: airline.bagPolicy.maxExtraBagCount, maxBagWeight: newFlight.maxBagWeight },
+      'the new flight',
+    );
+
+    // Same passengers and same airline: only the seat price changes, the baggage fee stays as paid
+    const infants = booking.passengers.filter((passenger) => passenger.type === PassengerType.INFANT).length;
+    const seated = current.seats.length;
+    const fareDifference = segmentFare(cabin.seatPrice, seated, infants) - segmentFare(current.seatPrice, seated, infants);
+    if (fareDifference > 0 && fareDifference < MIN_CHARGE_CENTS) {
+      throw new ConflictException('The fare difference is below the minimum card charge of 0.50 USD, so it cannot be paid.');
+    }
+
+    // A change started earlier and not paid yet is replaced by this one
+    if (booking.pendingChange) await this.discardPendingChange(booking._id, booking.userId, booking.pendingChange);
+
+    const seats = await this.holdSeats(newFlight, cabin.name, seated, 'the new flight');
+    const held: HeldSegment = { flightId: newFlight._id, cabinName: cabin.name, seats };
+    // Each passenger keeps their place: the k-th new seat goes to the passenger who had the k-th seat before
+    const segment: FlightSegment = {
+      flightId: newFlight._id,
+      cabinName: cabin.name,
+      seatPrice: cabin.seatPrice,
+      seats: seats.map((seat, k) => ({ passengerIndex: current.seats[k].passengerIndex, ...seat })),
+    };
+    const fareTotal = booking.fareTotal + fareDifference;
+    const changeId = new Types.ObjectId();
+
+    if (fareDifference <= 0) {
+      let changed: BookingRecord | null;
+      try {
+        changed = await this.commitChange(
+          booking,
+          { [`segments.${segmentIndex}.flightId`]: current.flightId, pendingChange: null },
+          { segmentIndex, segment, fareTotal },
+          null,
+        );
+      } catch (error) {
+        await this.releaseHeld([held]);
+        throw error;
+      }
+      if (!changed) {
+        await this.releaseHeld([held]);
+        throw new ConflictException('The booking was changed or cancelled at the same time. Please try again.');
+      }
+      const { refunds, refundError } = await this.refundChange(changed, changeId, -fareDifference);
+      return { outcome: 'changed', fareDifference, booking: this.toResponse(changed, context), payment: null, refunds, refundError };
+    }
+
+    // Higher fare: keep the new seats held while the difference is paid
+    let intent: Stripe.PaymentIntent;
+    try {
+      intent = await this.stripeService.call('start the payment', () =>
+        this.stripeService.stripe.paymentIntents.create(
+          {
+            amount: fareDifference,
+            currency: PLATFORM_CURRENCY,
+            automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+            metadata: {
+              bookingId: booking._id.toString(),
+              bookingType: 'flight',
+              userId,
+              purpose: FLIGHT_CHANGE_PURPOSE,
+              changeId: changeId.toString(),
+            },
+            description: `flight change of booking ${booking._id.toString()}`,
+          },
+          { idempotencyKey: `change-${changeId.toString()}` },
+        ),
+      );
+    } catch (error) {
+      await this.releaseHeld([held]);
+      throw error;
+    }
+
+    const pendingChange: PendingFlightChange = {
+      changeId,
+      segmentIndex,
+      segment,
+      fareTotal,
+      amountDue: fareDifference,
+      paymentIntentId: intent.id,
+      paymentStatus: intent.status as PaymentIntentStatus,
+      lastError: null,
+      holdExpiresAt: new Date(Date.now() + HOLD_MINUTES * 60_000),
+    };
+    const saved = await this.bookingModel
+      .updateOne({ _id: booking._id, status: BookingStatus.CONFIRMED, pendingChange: null }, { $set: { pendingChange } })
+      .exec();
+    if (saved.modifiedCount !== 1) {
+      await this.releaseHeld([held]);
+      await this.cancelPaymentIntent(intent.id);
+      throw new ConflictException('The booking was changed or cancelled at the same time. Please try again.');
+    }
+
+    if (dto.testPaymentMethod) {
+      intent = await this.confirmTestPayment(intent.id, dto.testPaymentMethod);
+      await this.applyChangePayment(intent);
+    }
+    const after = await this.bookingModel.findById(booking._id).lean<BookingRecord>().exec();
+    if (!after) throw new NotFoundException(BOOKING_NOT_FOUND);
+    const paid = (after.extraPayments ?? []).some((extra) => extra.paymentIntentId === intent.id);
+    const payment: ChangePaymentDto = {
+      paymentIntentId: intent.id,
+      amount: fareDifference,
+      status: intent.status as PaymentIntentStatus,
+      clientSecret: paid ? null : (intent.client_secret ?? null),
+      lastError: intent.last_payment_error?.message ?? null,
+      holdExpiresAt: pendingChange.holdExpiresAt.toISOString(),
+    };
+    return {
+      outcome: paid ? 'changed' : 'payment_required',
+      fareDifference,
+      booking: this.toResponse(after, context),
+      payment,
+      refunds: [],
+      refundError: null,
+    };
+  }
+
+  /**
+   * FLT-27, PAY-01: called for a fare-difference PaymentIntent (Stripe webhook, a status check, or a test payment). Stores
+   * its status and, once it succeeded with the exact amount while the hold lasts, applies the change. Safe to call many
+   * times. Money that arrives after the change was dropped (hold expired, replaced, or booking cancelled) is refunded.
+   */
+  async applyChangePayment(intent: Stripe.PaymentIntent): Promise<void> {
+    const { bookingId, changeId } = intent.metadata ?? {};
+    if (!bookingId || !changeId || !isValidObjectId(bookingId) || !isValidObjectId(changeId)) {
+      this.logger.warn(`Flight change PaymentIntent ${intent.id} has no booking or change in its metadata; ignored.`);
+      return;
+    }
+    const changeObjectId = new Types.ObjectId(changeId);
+    const booking = await this.bookingModel
+      .findOneAndUpdate(
+        { _id: bookingId, 'pendingChange.changeId': changeObjectId, 'pendingChange.paymentIntentId': intent.id },
+        { $set: { 'pendingChange.paymentStatus': intent.status, 'pendingChange.lastError': intent.last_payment_error?.message ?? null } },
+        { returnDocument: 'after' },
+      )
+      .lean<BookingRecord>()
+      .exec();
+    if (intent.status !== PaymentIntentStatus.SUCCEEDED) return;
+
+    const pending = booking?.pendingChange;
+    if (booking && pending) {
+      if (intent.amount_received !== pending.amountDue || intent.currency !== PLATFORM_CURRENCY) {
+        this.logger.error(`Change payment ${intent.id} paid ${intent.amount_received} ${intent.currency} but ${pending.amountDue} was due; not applied.`);
+        return;
+      }
+      const changed = await this.commitChange(
+        booking,
+        { 'pendingChange.changeId': changeObjectId, 'pendingChange.holdExpiresAt': { $gt: new Date() } },
+        pending,
+        { paymentIntentId: intent.id, amount: intent.amount_received },
+      );
+      if (changed) {
+        this.logger.log(`Flight booking ${bookingId} changed after payment ${intent.id}.`);
+        return;
+      }
+      // The hold ran out or the booking is no longer Confirmed: drop the change, which refunds the payment
+      await this.discardPendingChange(booking._id, booking.userId, { ...pending, paymentStatus: PaymentIntentStatus.SUCCEEDED });
+      return;
+    }
+
+    // Applied already (the webhook and status checks both get here)?
+    if (await this.bookingModel.exists({ _id: bookingId, 'extraPayments.paymentIntentId': intent.id }).exec()) return;
+    const owner = await this.bookingModel.findById(bookingId).select('userId').lean<{ _id: Types.ObjectId; userId: Types.ObjectId }>().exec();
+    if (!owner) return;
+    this.logger.warn(`Change payment ${intent.id} arrived after the change of booking ${bookingId} was dropped; refunding in full.`);
+    await this.refundsService.issue({
+      bookingId: owner._id,
+      bookingType: 'flight',
+      userId: owner.userId,
+      paymentIntentId: intent.id,
+      amount: intent.amount_received,
+      changeId: changeObjectId,
+    });
+  }
+
+  /**
+   * FLT-27: applies a change in one guarded update (so it happens once, and only while the booking is still Confirmed),
+   * then books the new seats and gives the old ones back. Returns the changed booking, or null if the guard failed.
+   */
+  private async commitChange(
+    booking: BookingRecord,
+    guard: Record<string, unknown>,
+    change: Pick<PendingFlightChange, 'segmentIndex' | 'segment' | 'fareTotal'>,
+    extraPayment: { paymentIntentId: string; amount: number } | null,
+  ): Promise<BookingRecord | null> {
+    const segments = booking.segments.map((segment, index) => (index === change.segmentIndex ? change.segment : segment));
+    const context = await this.loadContext(segments.map((segment) => segment.flightId));
+    const name = bookingName(
+      segments.map((segment) => {
+        const flight = context.flights.get(segment.flightId.toString());
+        return {
+          airlineCode: flight ? (context.airlines.get(flight.airlineId.toString())?.iataCode ?? '??') : '??',
+          number: flight?.number ?? '?',
+          from: flight ? this.airportOf(context, flight.departure.airportId).iataCode : '???',
+          to: flight ? this.airportOf(context, flight.arrival.airportId).iataCode : '???',
+        };
+      }),
+    );
+    const before = await this.bookingModel
+      .findOneAndUpdate(
+        { _id: booking._id, status: BookingStatus.CONFIRMED, ...guard },
+        {
+          $set: {
+            [`segments.${change.segmentIndex}`]: change.segment,
+            fareTotal: change.fareTotal,
+            cost: change.fareTotal + booking.baggageFee,
+            name,
+            pendingChange: null,
+          },
+          ...(extraPayment ? { $push: { extraPayments: extraPayment } } : {}),
+        },
+        { returnDocument: 'before' },
+      )
+      .lean<BookingRecord>()
+      .exec();
+    if (!before) return null;
+
+    const newSegment = change.segment;
+    await this.flightModel
+      .updateOne(
+        { _id: newSegment.flightId },
+        { $set: { 'cabins.$[cabin].seats.$[seat].availability': SeatAvailability.BOOKED } },
+        { arrayFilters: seatArrayFilters(newSegment.cabinName, newSegment.seats, SeatAvailability.HELD) },
+      )
+      .exec();
+    const oldSegment = before.segments[change.segmentIndex];
+    if (oldSegment?.seats.length) {
+      await this.flightModel
+        .updateOne(
+          { _id: oldSegment.flightId },
+          { $set: { 'cabins.$[cabin].seats.$[seat].availability': SeatAvailability.AVAILABLE } },
+          { arrayFilters: seatArrayFilters(oldSegment.cabinName, oldSegment.seats, SeatAvailability.BOOKED) },
+        )
+        .exec();
+    }
+    // TODO(GEN-01): in-app notification "booking changed" once the notifications module exists
+    return this.bookingModel.findById(booking._id).lean<BookingRecord>().exec();
+  }
+
+  /**
+   * FLT-27: drops a pending change (once, guarded by its id) and releases its seats. Its payment is cancelled, or
+   * refunded in full if it had already succeeded. Returns false if the change was already gone.
+   */
+  private async discardPendingChange(bookingId: Types.ObjectId, userId: Types.ObjectId, pending: PendingFlightChange): Promise<boolean> {
+    const result = await this.bookingModel
+      .updateOne({ _id: bookingId, 'pendingChange.changeId': pending.changeId }, { $set: { pendingChange: null } })
+      .exec();
+    if (result.modifiedCount !== 1) return false;
+    await this.releaseHeld([{ flightId: pending.segment.flightId, cabinName: pending.segment.cabinName, seats: pending.segment.seats }]);
+    if (pending.paymentStatus !== PaymentIntentStatus.SUCCEEDED) {
+      await this.cancelPaymentIntent(pending.paymentIntentId);
+      return true;
+    }
+    try {
+      await this.refundsService.issue({
+        bookingId,
+        bookingType: 'flight',
+        userId,
+        paymentIntentId: pending.paymentIntentId,
+        amount: pending.amountDue,
+        changeId: pending.changeId,
+      });
+    } catch (error) {
+      this.logger.error(`Refund of dropped flight change ${pending.changeId.toString()} failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return true;
+  }
+
+  /** FLT-27, PAY-03: refunds a lower fare from the booking's payments; a Stripe failure is reported and the change stands. */
+  private async refundChange(
+    booking: BookingRecord,
+    changeId: Types.ObjectId,
+    amount: number,
+  ): Promise<{ refunds: ChangeFlightResponseDto['refunds']; refundError: string | null }> {
+    if (amount <= 0) return { refunds: [], refundError: null };
+    try {
+      const issued = await this.refundsService.issueAcross(
+        { bookingId: booking._id, bookingType: 'flight', userId: booking.userId, changeId },
+        paymentSources(booking),
+        amount,
+      );
+      return { refunds: issued.map(toRefundResponse), refundError: null };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Refund for the flight change of booking ${booking._id.toString()} failed: ${message}`);
+      return { refunds: [], refundError: message };
+    }
+  }
+
+  /** PAY-01 test mode: pays right away with a Stripe test payment method; a declined card is a normal outcome. */
+  private async confirmTestPayment(paymentIntentId: string, paymentMethod: TestPaymentMethod): Promise<Stripe.PaymentIntent> {
+    try {
+      return await this.stripeService.stripe.paymentIntents.confirm(paymentIntentId, { payment_method: paymentMethod });
+    } catch (error) {
+      if (error instanceof Stripe.errors.StripeCardError) {
+        return this.stripeService.call('read the payment', () => this.stripeService.stripe.paymentIntents.retrieve(paymentIntentId));
+      }
+      throw error instanceof Stripe.errors.StripeError ? new BadRequestException(`Stripe: ${error.message}`) : error;
+    }
+  }
+
+  /** FLT-27: a frontend may have paid a pending change; read its status back from Stripe (best effort). */
+  private async refreshPendingChange(booking: BookingRecord): Promise<BookingRecord> {
+    const pending = booking.pendingChange;
+    if (!pending || pending.paymentStatus === PaymentIntentStatus.SUCCEEDED) return booking;
+    try {
+      await this.applyChangePayment(await this.stripeService.stripe.paymentIntents.retrieve(pending.paymentIntentId));
+      return (await this.bookingModel.findById(booking._id).lean<BookingRecord>().exec()) ?? booking;
+    } catch (error) {
+      this.logger.warn(`Could not refresh change payment ${pending.paymentIntentId}: ${error instanceof Error ? error.message : String(error)}`);
+      return booking;
+    }
   }
 
   /** FLT-23: the e-ticket PDF of a Confirmed (or Completed) booking. */
@@ -447,7 +863,8 @@ export class FlightBookingsService {
   private quote(booking: BookingRecord, context: BookingContext): CancellationQuoteDto {
     const outbound = context.flights.get(booking.segments[0].flightId.toString());
     const airline = outbound ? context.airlines.get(outbound.airlineId.toString()) : undefined;
-    const totalPaid = booking.payment?.status === PaymentIntentStatus.SUCCEEDED ? booking.payment.amount : 0;
+    // FLT-27: after flight changes, cost = first payment + differences paid - differences refunded
+    const totalPaid = booking.payment?.status === PaymentIntentStatus.SUCCEEDED ? booking.cost : 0;
     const base = { bookingId: booking._id.toString(), totalPaid, daysBeforeDeparture: 0, refundPercentage: 0, refundAmount: 0 };
 
     if (booking.status !== BookingStatus.CONFIRMED) {
@@ -537,7 +954,7 @@ export class FlightBookingsService {
   }
 
   /** FLT-23: the reference is random; on the rare clash with an existing one, try a new one. */
-  private async saveWithUniqueReference(data: Omit<FlightBooking, 'reference' | 'payment' | 'policiesAcceptedAt' | 'description' | 'rating'>): Promise<BookingRecord> {
+  private async saveWithUniqueReference(data: Omit<FlightBooking, 'reference' | 'payment' | 'policiesAcceptedAt' | 'description' | 'rating' | 'pendingChange' | 'extraPayments'>): Promise<BookingRecord> {
     for (let attempt = 1; attempt <= REFERENCE_ATTEMPTS; attempt += 1) {
       try {
         const created = await this.bookingModel.create({ ...data, reference: generateReference() });
@@ -637,7 +1054,30 @@ export class FlightBookingsService {
       baggageFee: booking.baggageFee,
       total: booking.fareTotal + booking.baggageFee,
       holdExpiresAt: booking.holdExpiresAt ? booking.holdExpiresAt.toISOString() : null,
+      pendingChange: booking.pendingChange
+        ? {
+            segmentIndex: booking.pendingChange.segmentIndex,
+            flightId: booking.pendingChange.segment.flightId.toString(),
+            amountDue: booking.pendingChange.amountDue,
+            paymentIntentId: booking.pendingChange.paymentIntentId,
+            paymentStatus: booking.pendingChange.paymentStatus,
+            holdExpiresAt: booking.pendingChange.holdExpiresAt.toISOString(),
+          }
+        : null,
     };
+  }
+}
+
+/** FLT-26, FLT-27: the booking's successful payments, first payment first, to refund from. */
+function paymentSources(booking: Pick<BookingRecord, 'payment' | 'extraPayments'>): RefundSource[] {
+  const first = booking.payment?.status === PaymentIntentStatus.SUCCEEDED ? [{ paymentIntentId: booking.payment.paymentIntentId, amount: booking.payment.amount }] : [];
+  return [...first, ...(booking.extraPayments ?? []).map(({ paymentIntentId, amount }) => ({ paymentIntentId, amount }))];
+}
+
+/** FLT-27: the new flight must fly between the same two airports. */
+function assertSameRoute(current: FlightRecord, next: FlightRecord): void {
+  if (!next.departure.airportId.equals(current.departure.airportId) || !next.arrival.airportId.equals(current.arrival.airportId)) {
+    throw new BadRequestException('The new flight must fly the same route (same departure and arrival airports).');
   }
 }
 

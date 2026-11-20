@@ -15,7 +15,15 @@ export type IssueRefund = {
   userId: Types.ObjectId;
   paymentIntentId: string;
   amount: number;
+  // FLT-27: set for the refund of a lower fare after a flight change; null/absent for a cancellation refund
+  changeId?: Types.ObjectId | null;
 };
+
+/** A payment a refund can be taken from, and how much it was. */
+export type RefundSource = { paymentIntentId: string; amount: number };
+
+// Refunds in these Stripe states gave no money back, so they don't count against what is left to refund
+const NOT_REFUNDED: Refund['status'][] = ['failed', 'canceled'];
 
 const REFUND_NOT_FOUND = 'Refund not found.';
 
@@ -30,13 +38,17 @@ export class RefundsService {
   ) {}
 
   /**
-   * One refund per booking. Calling again for the same booking returns the first one, and the Stripe idempotency key
-   * makes a repeated request (e.g. after a timeout) return the same Stripe refund instead of paying twice.
-   * Returns null when there is nothing to refund.
+   * One refund per booking, payment and reason (cancellation, or one flight change). Calling again returns the first
+   * one, and the Stripe idempotency key makes a repeated request (e.g. after a timeout) return the same Stripe refund
+   * instead of paying twice. Returns null when there is nothing to refund.
    */
   async issue(request: IssueRefund): Promise<RefundRecord | null> {
     if (request.amount <= 0) return null;
-    const existing = await this.refundModel.findOne({ bookingId: request.bookingId }).lean<RefundRecord>().exec();
+    const changeId = request.changeId ?? null;
+    const existing = await this.refundModel
+      .findOne({ bookingId: request.bookingId, paymentIntentId: request.paymentIntentId, changeId })
+      .lean<RefundRecord>()
+      .exec();
     if (existing) return existing;
 
     const refund = await this.stripeService.call('refund the payment', () =>
@@ -47,10 +59,42 @@ export class RefundsService {
           reason: 'requested_by_customer',
           metadata: { bookingId: request.bookingId.toString(), bookingType: request.bookingType },
         },
-        { idempotencyKey: `refund-${request.bookingId.toString()}` },
+        { idempotencyKey: `refund-${request.bookingId.toString()}-${changeId?.toString() ?? 'cancel'}-${request.paymentIntentId}` },
       ),
     );
     return this.save(refund, request);
+  }
+
+  /**
+   * FLT-26, FLT-27: refunds `amount` from the booking's payments in order (the first payment, then fare differences
+   * paid for flight changes), taking from each at most what is still unrefunded on it. Returns the refunds issued.
+   */
+  async issueAcross(
+    request: Omit<IssueRefund, 'paymentIntentId' | 'amount'>,
+    sources: RefundSource[],
+    amount: number,
+  ): Promise<RefundRecord[]> {
+    if (amount <= 0 || !sources.length) return [];
+    const previous = await this.refundModel
+      .find({ paymentIntentId: { $in: sources.map((source) => source.paymentIntentId) }, status: { $nin: NOT_REFUNDED } })
+      .select('paymentIntentId amount')
+      .lean<{ paymentIntentId: string; amount: number }[]>()
+      .exec();
+    const refunded = new Map<string, number>();
+    for (const refund of previous) refunded.set(refund.paymentIntentId, (refunded.get(refund.paymentIntentId) ?? 0) + refund.amount);
+
+    const issued: RefundRecord[] = [];
+    let left = amount;
+    for (const source of sources) {
+      if (left <= 0) break;
+      const take = Math.min(left, source.amount - (refunded.get(source.paymentIntentId) ?? 0));
+      if (take <= 0) continue;
+      const refund = await this.issue({ ...request, paymentIntentId: source.paymentIntentId, amount: take });
+      if (refund) issued.push(refund);
+      left -= take;
+    }
+    if (left > 0) this.logger.error(`Could not refund ${left} cents of booking ${request.bookingId.toString()}: nothing left to refund on its payments.`);
+    return issued;
   }
 
   /** Webhook: keeps a refund's status in step with Stripe (pending → succeeded / failed). */
@@ -84,9 +128,9 @@ export class RefundsService {
     return toRefundResponse(refund);
   }
 
-  /** The booking's refund, if it has one. */
+  /** The booking's cancellation refund, if it has one. */
   async findForBooking(bookingId: Types.ObjectId): Promise<RefundRecord | null> {
-    return this.refundModel.findOne({ bookingId }).lean<RefundRecord>().exec();
+    return this.refundModel.findOne({ bookingId, changeId: null }).lean<RefundRecord>().exec();
   }
 
   private async save(refund: Stripe.Refund, request: IssueRefund): Promise<RefundRecord> {
@@ -97,6 +141,7 @@ export class RefundsService {
           $set: {
             bookingId: request.bookingId,
             bookingType: request.bookingType,
+            changeId: request.changeId ?? null,
             userId: request.userId,
             amount: refund.amount,
             currency: refund.currency,

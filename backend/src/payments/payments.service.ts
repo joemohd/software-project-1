@@ -18,6 +18,7 @@ import {
 } from '../database/schemas/expense.schema.js';
 import { Flight } from '../database/schemas/flight.schema.js';
 import { Airline, Hotel, Room } from '../database/schemas/provider.schema.js';
+import { FLIGHT_CHANGE_PURPOSE } from '../flight-bookings/flight-bookings.constants.js';
 import { FlightBookingsService } from '../flight-bookings/flight-bookings.service.js';
 import {
   BookingPoliciesResponseDto,
@@ -30,7 +31,7 @@ import {
   TestPaymentMethod,
 } from './dto/payment.dto.js';
 import { RefundsService } from './refunds.service.js';
-import { PLATFORM_CURRENCY, StripeService } from './stripe.service.js';
+import { MIN_CHARGE_CENTS, PLATFORM_CURRENCY, StripeService } from './stripe.service.js';
 
 /** The fields of a flight or hotel booking that payments need. */
 type BookingRecord = {
@@ -47,8 +48,6 @@ type Tier = { daysBeforeService: { startDay: number }; refundPercentage: number 
 
 const BOOKING_NOT_FOUND = 'Booking not found.';
 const PAYMENT_NOT_FOUND = 'Payment not found.';
-// Stripe's smallest charge in USD
-const MIN_CHARGE_CENTS = 50;
 // A payment that can still be (re)tried
 const RETRYABLE = [
   PaymentIntentStatus.REQUIRES_PAYMENT_METHOD,
@@ -221,6 +220,11 @@ export class PaymentsService {
    * If the money arrived after the hold expired, the seats/rooms are gone, so the payment is refunded in full.
    */
   private async applyIntent(intent: Stripe.PaymentIntent): Promise<void> {
+    // FLT-27: a fare difference paid for a flight change, not the booking's own payment
+    if (intent.metadata?.purpose === FLIGHT_CHANGE_PURPOSE) {
+      await this.flightBookingsService.applyChangePayment(intent);
+      return;
+    }
     const type = intent.metadata?.bookingType;
     const bookingId = intent.metadata?.bookingId;
     if (!isBookingType(type) || !bookingId || !isValidObjectId(bookingId)) {

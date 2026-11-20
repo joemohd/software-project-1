@@ -476,3 +476,14 @@ Implement POST /api/hotel-bookings (HTL-16, HTL-18). Only this endpoint: the hot
 How the output was used:
 Added src/hotel-booking, which has only the create route, so it doesn't touch the hotel-bookings module on the teammate's branch. Rooms must be in the same hotel and active, each room gets adults and children (0-17), there must be at least one adult and no room over its max occupancy, and dates are checked (check-out after check-in, check-in not in the past at the hotel's local date). All rooms are held for 10 minutes in one MongoDB transaction; any overlap with a Confirmed reservation, an unexpired hold or a blocked range rejects the whole request. Adults are stored as age 18 in guestAges so the teammate's guest counts still work. Added holdExpiresAt to HotelBooking and pricePerNight to RoomBooking. Expired holds are swept every minute. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
 ================================================
+
+================================================
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-27 (optional)
+Prompt:
+Implement PATCH /api/flight-bookings/:id/change-flight (FLT-27): change a Confirmed booking's date or flight (same route and cabin), paying any fare difference via Stripe or receiving a refund of a lower fare, subject to seat availability.
+How the output was used:
+Added the change-flight route. The new flight must be on the same route, airline and cabin, a round trip must stay in order, and passenger types must not change. New seats are held atomically. A lower or equal fare is applied at once and the difference refunded; a higher fare stores a pending change with its own PaymentIntent and holds the seats 10 minutes, and the change is applied only after Stripe confirms the payment. Unpaid changes expire and release their seats. Refunds can now be split across the first payment and fare-difference payments (Refund.changeId added), and cancellation refunds use the booking total after changes. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
+================================================

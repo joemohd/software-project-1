@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query, StreamableFile } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -16,6 +16,7 @@ import {
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UserRole } from '../database/schemas/user.schema.js';
+import { ChangeFlightDto, ChangeFlightResponseDto } from './dto/change-flight.dto.js';
 import { CreateFlightBookingDto } from './dto/create-flight-booking.dto.js';
 import {
   CancellationQuoteDto,
@@ -144,5 +145,38 @@ export class FlightBookingsController {
   @ApiConflictResponse({ description: 'Not Confirmed (pending, expired or already cancelled), or the flight has departed' })
   cancel(@CurrentUser('id') userId: string, @Param('id') bookingId: string): Promise<CancelFlightBookingResponseDto> {
     return this.flightBookingsService.cancel(userId, bookingId);
+  }
+
+  // PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional)
+  @Patch(':id/change-flight')
+  @ApiOperation({
+    summary: 'Change the date or flight of your confirmed booking (same route, cabin and airline)',
+    description:
+      'Moves one flight of the booking (segmentIndex 0 = outbound, 1 = return) to another flight on the same route, in the ' +
+      'same cabin and with the same airline, for all passengers, subject to seat availability. A lower fare is applied at ' +
+      'once and the difference refunded (see GET /api/refunds/:id). A higher fare returns outcome "payment_required": the ' +
+      'new seats are held for 10 minutes and the change is applied only after Stripe confirms the difference was paid ' +
+      '(confirm it with payment.clientSecret, or send testPaymentMethod "pm_card_visa" to pay right away in test mode). ' +
+      'Until then the booking keeps its current flight. Prices are in cents.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking id' })
+  @ApiOkResponse({ type: ChangeFlightResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid body, no return flight, same flight, different route or airline, cabin not on the new flight, round trip out ' +
+      'of order, passenger type would change, bags over the new flight limits, or testPaymentMethod with a live key',
+  })
+  @ApiNotFoundResponse({ description: "Booking or new flight not found (also when the booking is someone else's)" })
+  @ApiConflictResponse({
+    description:
+      'Booking not Confirmed, flight already departed, new flight not open, airline inactive, not enough seats, difference ' +
+      'below 0.50 USD, or the booking changed at the same time',
+  })
+  changeFlight(
+    @CurrentUser('id') userId: string,
+    @Param('id') bookingId: string,
+    @Body() dto: ChangeFlightDto,
+  ): Promise<ChangeFlightResponseDto> {
+    return this.flightBookingsService.changeFlight(userId, bookingId, dto);
   }
 }

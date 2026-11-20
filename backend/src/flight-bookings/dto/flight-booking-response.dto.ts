@@ -41,6 +41,16 @@ export class BookingPassengerResponseDto {
   @ApiProperty({ type: [PassengerSeatDto] }) seats: PassengerSeatDto[];
 }
 
+// FLT-27: a flight change waiting for its fare difference to be paid
+export class PendingFlightChangeDto {
+  @ApiProperty({ description: '0 = outbound, 1 = return', example: 0 }) segmentIndex: number;
+  @ApiProperty() flightId: string;
+  @ApiProperty({ description: 'Fare difference to pay in cents', example: 12000 }) amountDue: number;
+  @ApiProperty({ example: 'pi_3QxYzAbCdEf' }) paymentIntentId: string;
+  @ApiProperty({ example: 'requires_payment_method' }) paymentStatus: string;
+  @ApiProperty({ description: 'The new seats are released after this (UTC)' }) holdExpiresAt: string;
+}
+
 // FLT-21: booking summary shown before payment
 export class FlightBookingResponseDto {
   @ApiProperty() id: string;
@@ -54,6 +64,8 @@ export class FlightBookingResponseDto {
   @ApiProperty({ description: 'fareTotal + baggageFee in cents', example: 99500 }) total: number;
   @ApiProperty({ nullable: true, description: 'When the seat hold ends (UTC); pay before this', example: '2026-11-19T12:10:00.000Z' })
   holdExpiresAt: string | null;
+  @ApiProperty({ type: PendingFlightChangeDto, nullable: true, description: 'FLT-27: a change waiting for payment, or null' })
+  pendingChange: PendingFlightChangeDto | null;
 }
 
 // FLT-25: one page of one group
