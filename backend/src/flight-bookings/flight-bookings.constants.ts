@@ -1,10 +1,10 @@
-// FLT-22: seats are held for 10 minutes while the user pays
+// FLT-19/FLT-21: seats are held for 10 minutes while the user pays
 export const HOLD_MINUTES = 10;
 
-// FLT-22: how often overdue holds are expired in the background (they are also expired lazily before use)
+// FLT-19/FLT-21: how often overdue holds are expired in the background (they are also expired lazily before use)
 export const HOLD_SWEEP_INTERVAL_MS = 60_000;
 
-// FLT-22: after losing a race for seats, try again this many times (with randomly picked seats) before giving up
+// FLT-19/FLT-21: after losing a race for seats, try again this many times (with randomly picked seats) before giving up
 export const MAX_HOLD_RETRIES = 5;
 
 // Overdue bookings handled per expiry run, so one run stays short

@@ -16,7 +16,7 @@ const query = (result: unknown) => {
 
 type Mocked = Record<string, ReturnType<typeof vi.fn>>;
 
-describe('FlightBookingsService (FLT-19, FLT-21, FLT-22)', () => {
+describe('FlightBookingsService (FLT-19, FLT-21)', () => {
   const NOW = new Date('2026-11-19T12:00:00Z');
   const userId = new Types.ObjectId().toString();
   const cairo = { _id: new Types.ObjectId(), timeZone: 'Africa/Cairo' };

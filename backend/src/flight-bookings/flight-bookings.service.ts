@@ -69,7 +69,7 @@ const isDuplicateReferenceError = (error: unknown) => {
   return mongoError?.code === 11000 && Boolean(mongoError.keyPattern?.reference);
 };
 
-// FLT-22: a flight can be booked while it is Scheduled and hasn't departed
+// FLT-19/FLT-21: a flight can be booked while it is Scheduled and hasn't departed
 const isOpenForBooking = (flight: FlightRecord) =>
   flight.status === FlightStatus.SCHEDULED && flight.departure.timestamp > new Date();
 
@@ -87,7 +87,7 @@ export class FlightBookingsService {
   ) {}
 
   /**
-   * FLT-19, FLT-21, FLT-22: validates passengers and baggage, prices the booking, holds the seats for 10 minutes and
+   * FLT-19, FLT-21: validates passengers and baggage, prices the booking, holds the seats for 10 minutes and
    * saves it as Pending Payment. Returns the booking summary shown before payment.
    */
   async create(userId: string, dto: CreateFlightBookingDto): Promise<FlightBookingResponseDto> {
@@ -96,7 +96,7 @@ export class FlightBookingsService {
     }
     const flightIds = dto.segments.map((segment) => new Types.ObjectId(segment.flightId));
 
-    // FLT-22: seats whose hold ran out go back on sale before we pick seats
+    // FLT-19/FLT-21: seats whose hold ran out go back on sale before we pick seats
     await this.expireOverdueHolds({ flightIds });
 
     const context = await this.loadContext(flightIds);
@@ -141,7 +141,7 @@ export class FlightBookingsService {
     const infants = types.length - seatedIndexes.length;
     const fareTotal = segments.reduce((sum, { cabin }) => sum + segmentFare(cabin.seatPrice, seatedIndexes.length, infants), 0);
 
-    // FLT-22: hold the seats segment by segment; if a later step fails, give back what was already held
+    // FLT-19/FLT-21: hold the seats segment by segment; if a later step fails, give back what was already held
     const held: HeldSegment[] = [];
     try {
       for (const { flight, cabin, label } of segments) {
@@ -243,7 +243,7 @@ export class FlightBookingsService {
   }
 
   /**
-   * FLT-22: Pending Payment bookings whose hold ran out become Expired and their seats go back to available.
+   * FLT-19/FLT-21: Pending Payment bookings whose hold ran out become Expired and their seats go back to available.
    * Called before creating (for the flights involved), before listing, and by the sweep every minute.
    * The status change is a guarded update, so when several callers race only one releases the seats, and a booking
    * confirmed by payment in the meantime is left alone.
@@ -277,7 +277,7 @@ export class FlightBookingsService {
   }
 
   /**
-   * FLT-22: picks `count` available seats and holds them in one guarded update that only matches while those exact
+   * FLT-19/FLT-21: picks `count` available seats and holds them in one guarded update that only matches while those exact
    * seats are still available. If another booking took one of them first, re-reads the flight and retries (up to
    * MAX_HOLD_RETRIES times) with randomly picked seats, so concurrent bookings stop colliding; otherwise 409.
    */

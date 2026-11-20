@@ -20,7 +20,7 @@ import { REFERENCE_ALPHABET, REFERENCE_LENGTH } from './flight-bookings.constant
 
 const { ADULT, CHILD, INFANT } = PassengerType;
 
-describe('booking rules (FLT-19, FLT-22)', () => {
+describe('booking rules (FLT-19, FLT-21)', () => {
   describe('ageOn', () => {
     it.each([
       ['2000-06-15', '2026-06-14', 25],

@@ -3,7 +3,7 @@ import { HOLD_SWEEP_INTERVAL_MS } from './flight-bookings.constants.js';
 import { FlightBookingsService } from './flight-bookings.service.js';
 
 /**
- * FLT-22: every minute, expires Pending Payment bookings whose 10-minute hold ran out and releases their seats.
+ * FLT-19/FLT-21: every minute, expires Pending Payment bookings whose 10-minute hold ran out and releases their seats.
  * Holds are also expired lazily before creating and listing bookings, so this only bounds how long a seat stays held.
  */
 @Injectable()

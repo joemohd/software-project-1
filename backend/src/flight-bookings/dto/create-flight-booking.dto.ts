@@ -26,7 +26,7 @@ import {
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 
-// FLT-19/FLT-22: one flight of the booking and the cabin to sit in
+// FLT-19/FLT-21: one flight of the booking and the cabin to sit in
 export class BookingSegmentDto {
   @ApiProperty({ description: 'Flight id', example: '6740c0ffee0000000000a001' })
   @IsMongoId()
@@ -71,7 +71,7 @@ export class BookingPassengerDto {
   extraBagWeights?: number[];
 }
 
-// FLT-19, FLT-21, FLT-22: one segment = one-way, two segments = round trip (outbound first)
+// FLT-19, FLT-21: one segment = one-way, two segments = round trip (outbound first)
 export class CreateFlightBookingDto {
   @ApiProperty({ type: [BookingSegmentDto], minItems: 1, maxItems: 2, description: '1 = one-way, 2 = round trip (outbound, then return)' })
   @IsArray()

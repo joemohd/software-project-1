@@ -11,7 +11,7 @@ import {
   REFERENCE_LENGTH,
 } from './flight-bookings.constants.js';
 
-// Pure booking rules (FLT-19, FLT-22): no database access, so they are unit-tested directly.
+// Pure booking rules (FLT-19, FLT-21): no database access, so they are unit-tested directly.
 
 export type SeatCoordinate = { row: number; column: string };
 
@@ -107,7 +107,7 @@ export function baggageFee(priceExtraBag: number, extraBags: number): number {
 }
 
 /**
- * FLT-22: picks `count` available seats, keeping the group in one row when a row has enough of them.
+ * FLT-19/FLT-21: picks `count` available seats, keeping the group in one row when a row has enough of them.
  * Returns null when the cabin doesn't have enough available seats.
  *
  * Without `random`: the lowest row with room, its first seats in letter order (or, if no row has room, the first

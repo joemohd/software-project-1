@@ -31,7 +31,7 @@ import { FlightBookingsService } from './flight-bookings.service.js';
 export class FlightBookingsController {
   constructor(private readonly flightBookingsService: FlightBookingsService) {}
 
-  // POST /api/flight-bookings (FLT-19, FLT-21, FLT-22)
+  // POST /api/flight-bookings (FLT-19, FLT-21)
   @Post()
   @ApiOperation({
     summary: 'Book a one-way or round-trip flight and hold the seats for 10 minutes',
