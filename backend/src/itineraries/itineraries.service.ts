@@ -116,7 +116,7 @@ export class ItinerariesService {
   // ITN-01: deleting removes it from public search; clones made by others are separate documents and stay
   async remove(userId: string, itineraryId: string): Promise<void> {
     const result = await this.itineraryModel
-      .deleteOne(this.ownedFilter(userId, itineraryId))
+      .deleteOne(this.ownedFilter(userId, itineraryId).filter)
       .exec();
     if (!result.deletedCount) throw new NotFoundException('Itinerary not found.');
     await this.clonebaseModel
@@ -231,7 +231,7 @@ export class ItinerariesService {
   ): Promise<ItineraryDetailDto> {
     const filter = this.childFilter(userId, 'days.activities._id', activityId, 'Activity');
     // Check ownership and the image limit before uploading anything
-    const current = await this.itineraryModel.findOne(filter).lean<ItineraryRecord>().exec();
+    const current = await this.itineraryModel.findOne(filter.filter).lean<ItineraryRecord>().exec();
     if (!current) throw new NotFoundException('Activity not found.');
     if (this.findActivity(current, activityId).imageUrls.length >= ACTIVITY_MAX_IMAGES) {
       throw new BadRequestException(`An activity can have at most ${ACTIVITY_MAX_IMAGES} images.`);
