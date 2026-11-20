@@ -1,208 +1,464 @@
 import {
   BadRequestException,
-  ForbiddenException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { DateTime } from 'luxon';
-import { isValidObjectId, Model, Types } from 'mongoose';
-import type { AuthenticatedUser } from '../auth/auth.types.js';
-import { Airport } from '../database/schemas/airport.schema.js';
-import { City } from '../database/schemas/city.schema.js';
-import { Expense } from '../database/schemas/expense.schema.js';
-import { Itinerary, ItineraryDay, ItineraryVisibility } from '../database/schemas/itinerary.schema.js';
-import { Hotel, Room } from '../database/schemas/provider.schema.js';
-import { UserRole } from '../database/schemas/user.schema.js';
-import { FlightSearchService } from '../flights/flight-search.service.js';
+import { Model, Types } from 'mongoose';
+import { UploadService } from '../common/upload/upload.service.js';
 import {
-  ItineraryFlightSearchResponseDto,
-  SearchItineraryFlightsQueryDto,
-} from './dto/search-itinerary-flights.dto.js';
+  ClonebaseItinerary,
+  Itinerary,
+  ItineraryVisibility,
+} from '../database/schemas/itinerary.schema.js';
+import type { CreateActivityDto, UpdateActivityDto } from './dto/activity.dto.js';
+import type { CreateBudgetDto, UpdateBudgetDto } from './dto/budget.dto.js';
+import type { CreateItineraryDto } from './dto/create-itinerary.dto.js';
+import type { CreateDayDto, ReorderDaysDto, UpdateDayDto } from './dto/day.dto.js';
+import type { ItineraryDetailDto, ItineraryPageDto } from './dto/itinerary-response.dto.js';
+import type { CreateTransportCostDto, UpdateTransportCostDto } from './dto/transport-cost.dto.js';
+import type { UpdateItineraryDto } from './dto/update-itinerary.dto.js';
+import type { LinkBookingDto } from './dto/booking-link.dto.js';
+import { BookingStatus } from '../database/schemas/expense.schema.js';
+import { ItineraryPresenter } from './itinerary-presenter.service.js';
+import { moveItem, toUtcMidnight } from './itinerary-rules.js';
+import {
+  imageIdFromUrl,
+  type ItineraryRecord,
+  toObjectIdOr404,
+} from './itinerary.types.js';
+import { ACTIVITY_MAX_IMAGES, ITINERARY_MAX_DAYS, PAGE_SIZE } from './itineraries.constants.js';
 
-type ItineraryRecord = Itinerary & { _id: Types.ObjectId };
-type CityRecord = { _id: Types.ObjectId; name: string };
-type AirportIdRecord = { _id: Types.ObjectId };
-type ExpenseCityRecord = {
-  _id: Types.ObjectId;
-  expenseType?: string;
-  cityId?: Types.ObjectId;
-  toCityId?: Types.ObjectId;
-  fromCityId?: Types.ObjectId;
-  rooms?: { roomId: Types.ObjectId }[];
-};
-
+/**
+ * Owner-side itinerary operations: ITN-01, ITN-03, ITN-05, ITN-07, ITN-08, ITN-09,
+ * ITN-10, ITN-12, ITN-14, ITN-16, ITN-20.
+ *
+ * Every query filters on the itinerary id AND the current user id, so another user's
+ * itinerary (private or not) answers 404 and is never revealed (ACC-11).
+ * Days, activities, budget entries and transport costs are embedded in the itinerary
+ * (bounded, parent-owned data); day numbers are array positions and dates are derived
+ * from the start date, so add / delete / reorder never leave gaps or stale dates.
+ */
 @Injectable()
 export class ItinerariesService {
   constructor(
     @InjectModel(Itinerary.name) private readonly itineraryModel: Model<Itinerary>,
-    @InjectModel(City.name) private readonly cityModel: Model<City>,
-    @InjectModel(Airport.name) private readonly airportModel: Model<Airport>,
-    @InjectModel(Expense.name) private readonly expenseModel: Model<Expense>,
-    @InjectModel(Room.name) private readonly roomModel: Model<Room>,
-    @InjectModel(Hotel.name) private readonly hotelModel: Model<Hotel>,
-    private readonly flightSearchService: FlightSearchService,
+    @InjectModel(ClonebaseItinerary.name)
+    private readonly clonebaseModel: Model<ClonebaseItinerary>,
+    private readonly presenter: ItineraryPresenter,
+    private readonly uploadService: UploadService,
   ) {}
 
-  /**
-   * ITN-26: searches one-way or round-trip flights from a chosen origin airport to any airport in the city of the
-   * itinerary's first day. Outbound date defaults to startDate and returnDate to the last day's date, reusing
-   * FLT-11, FLT-12 and FLT-15 via FlightSearchService.
-   */
-  async searchFlights(
-    user: AuthenticatedUser,
-    itineraryId: string,
-    query: SearchItineraryFlightsQueryDto,
-  ): Promise<ItineraryFlightSearchResponseDto> {
-    if (!isValidObjectId(itineraryId)) throw new NotFoundException('Itinerary not found.');
-    const itinerary = await this.itineraryModel.findById(itineraryId).lean<ItineraryRecord>().exec();
-    if (!itinerary) throw new NotFoundException('Itinerary not found.');
+  // ---- ITN-01, ITN-03, ITN-20 ----
 
-    const isOwner = itinerary.userId.toString() === user.id;
-    const isAdmin = user.role === UserRole.ADMIN;
-    if (!isOwner && !isAdmin) {
-      if (itinerary.isHidden) throw new NotFoundException('Itinerary not found.');
-      if (itinerary.visibility !== ItineraryVisibility.PUBLIC) {
-        throw new ForbiddenException('You do not have permission to access this private itinerary.');
-      }
-    }
+  async create(userId: string, dto: CreateItineraryDto): Promise<ItineraryDetailDto> {
+    await this.presenter.assertCountries(dto.countries);
+    const created = await this.itineraryModel
+      .create({
+        userId: new Types.ObjectId(userId),
+        title: dto.title,
+        countries: dto.countries,
+        startDate: toUtcMidnight(new Date(dto.startDate)),
+        visibility: ItineraryVisibility.PRIVATE,
+        days: [],
+        transportCosts: [],
+      })
+      .catch(this.rethrowValidation);
+    return this.presenter.detail(created.toObject() as unknown as ItineraryRecord);
+  }
 
-    if (!itinerary.days?.length) {
-      throw new BadRequestException('This itinerary has no days configured.');
-    }
-
-    const firstDayCityId = await this.resolveDayCityId(itinerary.days[0]);
-    if (!firstDayCityId) {
-      throw new BadRequestException("The itinerary's first day does not have a city assigned.");
-    }
-
-    const destinationCity = await this.cityModel
-      .findById(firstDayCityId)
-      .select('name')
-      .lean<CityRecord>()
-      .exec();
-    if (!destinationCity) {
-      throw new BadRequestException("The city of the itinerary's first day was not found.");
-    }
-
-    const startIsoDate = DateTime.fromJSDate(new Date(itinerary.startDate), { zone: 'utc' }).toISODate();
-    const lastDayIsoDate = DateTime.fromJSDate(new Date(itinerary.startDate), { zone: 'utc' })
-      .plus({ days: Math.max(0, itinerary.days.length - 1) })
-      .toISODate();
-    if (!startIsoDate || !lastDayIsoDate) {
-      throw new BadRequestException('Itinerary startDate is invalid.');
-    }
-
-    const isRoundTrip =
-      query.tripType === 'round-trip' || (query.tripType === undefined && query.returnDate !== undefined);
-    const outboundDate = query.departureDate ?? startIsoDate;
-    const effectiveReturnDate = isRoundTrip ? (query.returnDate ?? lastDayIsoDate) : undefined;
-
-    const destinationAirports = await this.airportModel
-      .find({ cityId: destinationCity._id })
-      .select('_id')
-      .lean<AirportIdRecord[]>()
-      .exec();
-    const destinationAirportIds = destinationAirports.map((airport) => airport._id.toString());
-
-    const adults = query.adults ?? query.passengers ?? 1;
-    const children = query.children ?? 0;
-    const infants = query.infants ?? 0;
-    const page = query.page ?? 1;
-
-    // If the destination city has no airports at all, still validate origin airport and query parameters
-    if (destinationAirportIds.length === 0) {
-      const originExists =
-        isValidObjectId(query.originAirportId) &&
-        Boolean(await this.airportModel.exists({ _id: new Types.ObjectId(query.originAirportId) }).exec());
-      if (!originExists) {
-        throw new BadRequestException('Departure airport is not in the airport list (GET /api/airports).');
-      }
-      if (infants > adults) {
-        throw new BadRequestException('Number of infants cannot exceed number of adults.');
-      }
-      if (query.minPrice !== undefined && query.maxPrice !== undefined && query.minPrice > query.maxPrice) {
-        throw new BadRequestException('minPrice cannot be greater than maxPrice.');
-      }
-      if (effectiveReturnDate !== undefined && effectiveReturnDate < outboundDate) {
-        throw new BadRequestException('returnDate cannot be earlier than departureDate.');
-      }
-
-      const emptyPage = { items: [], page, pageSize: 10, total: 0, totalPages: 0 };
-      return {
-        itineraryId: itinerary._id.toString(),
-        destinationCity: { id: destinationCity._id.toString(), name: destinationCity.name },
-        destinationAirportIds: [],
-        outboundDate,
-        returnDate: effectiveReturnDate ?? null,
-        tripType: isRoundTrip ? 'round-trip' : 'one-way',
-        passengers: { adults, children, infants, seatsRequired: adults + children },
-        outbound: emptyPage,
-        return: isRoundTrip ? emptyPage : null,
-        message: 'No flights found.',
-      };
-    }
-
-    const searchResult = await this.flightSearchService.searchForAirports({
-      departureAirportIds: [query.originAirportId],
-      arrivalAirportIds: destinationAirportIds,
-      departureDate: outboundDate,
-      returnDate: effectiveReturnDate,
-      adults,
-      children,
-      infants,
-      cabin: query.cabin,
-      minPrice: query.minPrice,
-      maxPrice: query.maxPrice,
-      sortBy: query.sortBy,
-      sortOrder: query.sortOrder ?? 'asc',
-      page,
-    });
-
+  async listMine(userId: string, page: number): Promise<ItineraryPageDto> {
+    const filter = { userId: new Types.ObjectId(userId) };
+    const [items, total] = await Promise.all([
+      this.itineraryModel
+        .find(filter)
+        .select('title countries startDate visibility days._id updatedAt createdAt userId')
+        .sort({ updatedAt: -1, _id: -1 })
+        .skip((page - 1) * PAGE_SIZE)
+        .limit(PAGE_SIZE)
+        .lean<ItineraryRecord[]>()
+        .exec(),
+      this.itineraryModel.countDocuments(filter).exec(),
+    ]);
     return {
-      tripType: searchResult.tripType,
-      passengers: searchResult.passengers,
-      outbound: searchResult.outbound,
-      return: searchResult.return,
-      message: searchResult.message,
-      itineraryId: itinerary._id.toString(),
-      destinationCity: { id: destinationCity._id.toString(), name: destinationCity.name },
-      destinationAirportIds,
-      outboundDate,
-      returnDate: effectiveReturnDate ?? null,
+      items: items.map((item) => this.presenter.summary(item)),
+      page,
+      pageSize: PAGE_SIZE,
+      total,
+      totalPages: Math.ceil(total / PAGE_SIZE),
+    };
+  }
+
+  async getMine(userId: string, itineraryId: string): Promise<ItineraryDetailDto> {
+    return this.presenter.detail(await this.findOwned(userId, itineraryId));
+  }
+
+  /** Loads one of the user's itineraries as a plain object, or 404. */
+  async findOwned(userId: string, itineraryId: string): Promise<ItineraryRecord> {
+    const itinerary = await this.itineraryModel
+      .findOne({ _id: toObjectIdOr404(itineraryId, 'Itinerary'), userId: new Types.ObjectId(userId) })
+      .lean<ItineraryRecord>()
+      .exec();
+    if (!itinerary) throw new NotFoundException('Itinerary not found.');
+    return itinerary;
+  }
+
+  async update(userId: string, itineraryId: string, dto: UpdateItineraryDto): Promise<ItineraryDetailDto> {
+    if (dto.countries) await this.presenter.assertCountries(dto.countries);
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      if (dto.title !== undefined) itinerary.title = dto.title;
+      if (dto.countries !== undefined) itinerary.countries = dto.countries;
+      // Day dates are derived on read, so moving the start date shifts every day (ITN-05)
+      if (dto.startDate !== undefined) itinerary.startDate = toUtcMidnight(new Date(dto.startDate));
+      // ITN-20: setting Private removes it from public search immediately
+      if (dto.visibility !== undefined) itinerary.visibility = dto.visibility;
+    });
+  }
+
+  // ITN-01: deleting removes it from public search; clones made by others are separate documents and stay
+  async remove(userId: string, itineraryId: string): Promise<void> {
+    const result = await this.itineraryModel
+      .deleteOne(this.ownedFilter(userId, itineraryId).filter)
+      .exec();
+    if (!result.deletedCount) throw new NotFoundException('Itinerary not found.');
+    await this.clonebaseModel
+      .deleteMany({ derivedItineraryId: new Types.ObjectId(itineraryId) })
+      .exec();
+  }
+
+  // ---- ITN-05, ITN-07, ITN-08, ITN-09: days ----
+
+  async addDay(userId: string, itineraryId: string, dto: CreateDayDto): Promise<ItineraryDetailDto> {
+    const cityId = new Types.ObjectId(dto.cityId);
+    await this.presenter.assertCities([cityId]);
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      if (itinerary.days.length >= ITINERARY_MAX_DAYS) {
+        throw new BadRequestException(`An itinerary can have at most ${ITINERARY_MAX_DAYS} days.`);
+      }
+      itinerary.days.push({
+        _id: new Types.ObjectId(),
+        cityId,
+        notes: dto.notes ?? '',
+        activities: [],
+        budgets: [],
+        bookingIds: [],
+      });
+    });
+  }
+
+  async updateDay(
+    userId: string,
+    itineraryId: string,
+    dayId: string,
+    dto: UpdateDayDto,
+  ): Promise<ItineraryDetailDto> {
+    if (dto.cityId) await this.presenter.assertCities([new Types.ObjectId(dto.cityId)]);
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      const day = itinerary.days[this.dayIndex(itinerary, dayId)];
+      if (dto.cityId !== undefined) day.cityId = new Types.ObjectId(dto.cityId);
+      if (dto.notes !== undefined) day.notes = dto.notes;
+    });
+  }
+
+  // ITN-07: later days move up one number and one date; the day's transport costs go with it
+  async deleteDay(userId: string, itineraryId: string, dayId: string): Promise<ItineraryDetailDto> {
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      const index = this.dayIndex(itinerary, dayId);
+      const [removed] = itinerary.days.splice(index, 1);
+      itinerary.transportCosts = itinerary.transportCosts.filter(
+        (cost) => !cost.dayId.equals(removed._id),
+      );
+    });
+  }
+
+  // ITN-08: move a day to a new position; numbers, dates and city groups are recalculated
+  async reorderDays(userId: string, itineraryId: string, dto: ReorderDaysDto): Promise<ItineraryDetailDto> {
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      const from = this.dayIndex(itinerary, dto.dayId);
+      if (dto.newPosition > itinerary.days.length) {
+        throw new BadRequestException(`newPosition must be between 1 and ${itinerary.days.length}.`);
+      }
+      itinerary.days = moveItem(itinerary.days, from, dto.newPosition - 1);
+    });
+  }
+
+  // ---- ITN-10, ITN-12: activities ----
+
+  async addActivity(
+    userId: string,
+    itineraryId: string,
+    dayId: string,
+    dto: CreateActivityDto,
+  ): Promise<ItineraryDetailDto> {
+    this.assertCostHasCurrency(dto.cost, dto.currency);
+    if (dto.currency) await this.presenter.assertCurrencies([dto.currency]);
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      itinerary.days[this.dayIndex(itinerary, dayId)].activities.push({
+        _id: new Types.ObjectId(),
+        name: dto.name,
+        description: dto.description ?? '',
+        time: dto.time ?? null,
+        cost: dto.cost ?? null,
+        currency: dto.currency ?? null,
+        imageUrls: [],
+      });
+    });
+  }
+
+  async updateActivity(userId: string, activityId: string, dto: UpdateActivityDto): Promise<ItineraryDetailDto> {
+    if (dto.currency) await this.presenter.assertCurrencies([dto.currency]);
+    return this.mutate(this.childFilter(userId, 'days.activities._id', activityId, 'Activity'), (itinerary) => {
+      const activity = this.findActivity(itinerary, activityId);
+      if (dto.name !== undefined) activity.name = dto.name;
+      if (dto.description !== undefined) activity.description = dto.description;
+      if (dto.time !== undefined) activity.time = dto.time;
+      if (dto.cost !== undefined) activity.cost = dto.cost;
+      if (dto.currency !== undefined) activity.currency = dto.currency;
+      this.assertCostHasCurrency(activity.cost, activity.currency);
+    });
+  }
+
+  async deleteActivity(userId: string, activityId: string): Promise<ItineraryDetailDto> {
+    return this.mutate(this.childFilter(userId, 'days.activities._id', activityId, 'Activity'), (itinerary) => {
+      for (const day of itinerary.days) {
+        day.activities = day.activities.filter((activity) => !activity._id.equals(activityId));
+      }
+    });
+  }
+
+  // ITN-12, GEN-08: JPG/PNG up to 5 MB (checked by the shared upload options/service), at most 5 per activity
+  async addActivityImage(
+    userId: string,
+    activityId: string,
+    file: Express.Multer.File,
+  ): Promise<ItineraryDetailDto> {
+    const filter = this.childFilter(userId, 'days.activities._id', activityId, 'Activity');
+    // Check ownership and the image limit before uploading anything
+    const current = await this.itineraryModel.findOne(filter.filter).lean<ItineraryRecord>().exec();
+    if (!current) throw new NotFoundException('Activity not found.');
+    if (this.findActivity(current, activityId).imageUrls.length >= ACTIVITY_MAX_IMAGES) {
+      throw new BadRequestException(`An activity can have at most ${ACTIVITY_MAX_IMAGES} images.`);
+    }
+
+    const { url } = await this.uploadService.uploadImage(file);
+    return this.mutate(filter, (itinerary) => {
+      const activity = this.findActivity(itinerary, activityId);
+      if (activity.imageUrls.length >= ACTIVITY_MAX_IMAGES) {
+        throw new BadRequestException(`An activity can have at most ${ACTIVITY_MAX_IMAGES} images.`);
+      }
+      activity.imageUrls.push(url);
+    });
+  }
+
+  async deleteActivityImage(userId: string, activityId: string, imageId: string): Promise<ItineraryDetailDto> {
+    return this.mutate(this.childFilter(userId, 'days.activities._id', activityId, 'Activity'), (itinerary) => {
+      const activity = this.findActivity(itinerary, activityId);
+      const remaining = activity.imageUrls.filter((url) => imageIdFromUrl(url) !== imageId);
+      if (remaining.length === activity.imageUrls.length) throw new NotFoundException('Image not found.');
+      activity.imageUrls = remaining;
+    });
+  }
+
+  // ---- ITN-14: budget entries ----
+
+  async addBudget(
+    userId: string,
+    itineraryId: string,
+    dayId: string,
+    dto: CreateBudgetDto,
+  ): Promise<ItineraryDetailDto> {
+    await this.presenter.assertCurrencies([dto.currency]);
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      itinerary.days[this.dayIndex(itinerary, dayId)].budgets.push({
+        _id: new Types.ObjectId(),
+        category: dto.category,
+        amount: dto.amount,
+        currency: dto.currency,
+        note: dto.note ?? '',
+      });
+    });
+  }
+
+  async updateBudget(userId: string, budgetId: string, dto: UpdateBudgetDto): Promise<ItineraryDetailDto> {
+    if (dto.currency) await this.presenter.assertCurrencies([dto.currency]);
+    return this.mutate(this.childFilter(userId, 'days.budgets._id', budgetId, 'Budget entry'), (itinerary) => {
+      const budget = itinerary.days
+        .flatMap((day) => day.budgets)
+        .find((entry) => entry._id.equals(budgetId));
+      if (!budget) throw new NotFoundException('Budget entry not found.');
+      if (dto.category !== undefined) budget.category = dto.category;
+      if (dto.amount !== undefined) budget.amount = dto.amount;
+      if (dto.currency !== undefined) budget.currency = dto.currency;
+      if (dto.note !== undefined) budget.note = dto.note;
+    });
+  }
+
+  async deleteBudget(userId: string, budgetId: string): Promise<ItineraryDetailDto> {
+    return this.mutate(this.childFilter(userId, 'days.budgets._id', budgetId, 'Budget entry'), (itinerary) => {
+      for (const day of itinerary.days) {
+        day.budgets = day.budgets.filter((entry) => !entry._id.equals(budgetId));
+      }
+    });
+  }
+
+  // ---- ITN-16: intercity transport costs ----
+
+  async addTransportCost(
+    userId: string,
+    itineraryId: string,
+    dto: CreateTransportCostDto,
+  ): Promise<ItineraryDetailDto> {
+    const fromCityId = new Types.ObjectId(dto.fromCityId);
+    const toCityId = new Types.ObjectId(dto.toCityId);
+    await Promise.all([
+      this.presenter.assertCities([fromCityId, toCityId]),
+      this.presenter.assertCurrencies([dto.currency]),
+    ]);
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      const day = itinerary.days[this.dayIndex(itinerary, dto.dayId)];
+      itinerary.transportCosts.push({
+        _id: new Types.ObjectId(),
+        mode: dto.mode,
+        fromCityId,
+        toCityId,
+        amount: dto.amount,
+        currency: dto.currency,
+        dayId: day._id,
+      });
+    });
+  }
+
+  async updateTransportCost(
+    userId: string,
+    transportId: string,
+    dto: UpdateTransportCostDto,
+  ): Promise<ItineraryDetailDto> {
+    const cityIds = [dto.fromCityId, dto.toCityId]
+      .filter((id): id is string => !!id)
+      .map((id) => new Types.ObjectId(id));
+    if (cityIds.length) await this.presenter.assertCities(cityIds);
+    if (dto.currency) await this.presenter.assertCurrencies([dto.currency]);
+
+    return this.mutate(this.childFilter(userId, 'transportCosts._id', transportId, 'Transport cost'), (itinerary) => {
+      const cost = itinerary.transportCosts.find((entry) => entry._id.equals(transportId));
+      if (!cost) throw new NotFoundException('Transport cost not found.');
+      if (dto.mode !== undefined) cost.mode = dto.mode;
+      if (dto.fromCityId !== undefined) cost.fromCityId = new Types.ObjectId(dto.fromCityId);
+      if (dto.toCityId !== undefined) cost.toCityId = new Types.ObjectId(dto.toCityId);
+      if (dto.amount !== undefined) cost.amount = dto.amount;
+      if (dto.currency !== undefined) cost.currency = dto.currency;
+      if (dto.dayId !== undefined) cost.dayId = itinerary.days[this.dayIndex(itinerary, dto.dayId)]._id;
+    });
+  }
+
+  async deleteTransportCost(userId: string, transportId: string): Promise<ItineraryDetailDto> {
+    return this.mutate(this.childFilter(userId, 'transportCosts._id', transportId, 'Transport cost'), (itinerary) => {
+      itinerary.transportCosts = itinerary.transportCosts.filter((entry) => !entry._id.equals(transportId));
+    });
+  }
+
+  // ---- ITN-27: link booked flights and hotels to days ----
+
+  async linkBooking(userId: string, itineraryId: string, dto: LinkBookingDto): Promise<ItineraryDetailDto> {
+    const bookingId = new Types.ObjectId(dto.bookingId);
+    const [booking] = await this.presenter.findBookings([bookingId]);
+    // Another user's booking answers 404 like a missing one, so its existence is not revealed
+    if (!booking || !booking.userId.equals(userId)) throw new NotFoundException('Booking not found.');
+    if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.COMPLETED) {
+      throw new BadRequestException('Only Confirmed or Completed bookings can be linked to an itinerary.');
+    }
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      const day = itinerary.days[this.dayIndex(itinerary, dto.dayId)];
+      const alreadyLinked = itinerary.days.some((entry) => (entry.bookingIds ?? []).some((id) => id.equals(bookingId)));
+      if (alreadyLinked) throw new ConflictException('This booking is already linked to this itinerary.');
+      day.bookingIds = [...(day.bookingIds ?? []), bookingId];
+    });
+  }
+
+  async unlinkBooking(userId: string, itineraryId: string, bookingId: string): Promise<ItineraryDetailDto> {
+    const id = toObjectIdOr404(bookingId, 'Booking');
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      let removed = false;
+      for (const day of itinerary.days) {
+        const remaining = (day.bookingIds ?? []).filter((entry) => !entry.equals(id));
+        removed ||= remaining.length !== (day.bookingIds ?? []).length;
+        day.bookingIds = remaining;
+      }
+      if (!removed) throw new NotFoundException('This booking is not linked to this itinerary.');
+    });
+  }
+
+  // ---- helpers ----
+
+  private ownedFilter(userId: string, itineraryId: string) {
+    return {
+      filter: { _id: toObjectIdOr404(itineraryId, 'Itinerary'), userId: new Types.ObjectId(userId) },
+      notFound: 'Itinerary not found.',
+    };
+  }
+
+  /** Flat routes (/activities/:id, /budgets/:id, /transport-costs/:id): find the parent itinerary owned by the user. */
+  private childFilter(userId: string, path: string, childId: string, entity: string) {
+    return {
+      filter: { [path]: toObjectIdOr404(childId, entity), userId: new Types.ObjectId(userId) },
+      notFound: `${entity} not found.`,
     };
   }
 
   /**
-   * Resolves the city of an itinerary day: reads `day.cityId` directly (ITN-05), or falls back to inspecting the
-   * day's expenses (Activity.cityId, Transport.toCityId/fromCityId, or HotelBooking's hotel cityId).
+   * Loads the itinerary, applies the change to a plain copy, writes it back with full schema
+   * validation (max 60 days, non-negative amounts, ...) and returns the updated details.
    */
-  private async resolveDayCityId(day: ItineraryDay): Promise<Types.ObjectId | null> {
-    if (day.cityId) return new Types.ObjectId(day.cityId);
-    if (!day.expenseIds?.length) return null;
+  private async mutate(
+    target: { filter: Record<string, unknown>; notFound: string },
+    change: (itinerary: ItineraryRecord) => void,
+  ): Promise<ItineraryDetailDto> {
+    const document = await this.itineraryModel.findOne(target.filter).exec();
+    if (!document) throw new NotFoundException(target.notFound);
 
-    const expenses = await this.expenseModel
-      .find({ _id: { $in: day.expenseIds } })
-      .select('expenseType cityId toCityId fromCityId rooms')
-      .lean<ExpenseCityRecord[]>()
-      .exec();
+    const itinerary = document.toObject() as unknown as ItineraryRecord;
+    change(itinerary);
 
-    const byId = new Map(expenses.map((expense) => [expense._id.toString(), expense]));
-    for (const expenseId of day.expenseIds) {
-      const expense = byId.get(expenseId.toString());
-      if (!expense) continue;
-      if (expense.cityId) return new Types.ObjectId(expense.cityId);
-      if (expense.toCityId) return new Types.ObjectId(expense.toCityId);
-      if (expense.fromCityId) return new Types.ObjectId(expense.fromCityId);
-      const firstRoomId = expense.rooms?.[0]?.roomId;
-      if (firstRoomId) {
-        const room = await this.roomModel.findById(firstRoomId).select('hotelId').lean<{ hotelId: Types.ObjectId }>().exec();
-        if (room) {
-          const hotel = await this.hotelModel.findById(room.hotelId).select('cityId').lean<{ cityId: Types.ObjectId }>().exec();
-          if (hotel?.cityId) return new Types.ObjectId(hotel.cityId);
-        }
-      }
-    }
-    return null;
+    document.set({
+      title: itinerary.title,
+      countries: itinerary.countries,
+      startDate: itinerary.startDate,
+      visibility: itinerary.visibility,
+      days: itinerary.days,
+      transportCosts: itinerary.transportCosts,
+    });
+    await document.save().catch(this.rethrowValidation);
+    return this.presenter.detail(document.toObject() as unknown as ItineraryRecord);
   }
+
+  private dayIndex(itinerary: ItineraryRecord, dayId: string): number {
+    const index = itinerary.days.findIndex((day) => day._id.toString() === dayId);
+    if (index === -1) throw new NotFoundException('Day not found in this itinerary.');
+    return index;
+  }
+
+  private findActivity(itinerary: ItineraryRecord, activityId: string) {
+    const activity = itinerary.days
+      .flatMap((day) => day.activities)
+      .find((entry) => entry._id.toString() === activityId);
+    if (!activity) throw new NotFoundException('Activity not found.');
+    return activity;
+  }
+
+  // ITN-10: a cost needs a currency so it can be converted in the budget (ITN-18)
+  private assertCostHasCurrency(cost: number | null | undefined, currency: string | null | undefined) {
+    if (cost !== undefined && cost !== null && !currency) {
+      throw new BadRequestException('currency is required when cost is given.');
+    }
+  }
+
+  private readonly rethrowValidation = (error: unknown): never => {
+    // Mongoose schema validation (e.g. more than 60 days) becomes a 400 with the field messages
+    if (error instanceof Error && error.name === 'ValidationError' && 'errors' in error) {
+      const issues = Object.values((error as { errors: Record<string, { message: string }> }).errors);
+      throw new BadRequestException(issues.map((issue) => issue.message));
+    }
+    throw error;
+  };
 }
