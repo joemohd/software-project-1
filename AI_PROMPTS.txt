@@ -366,3 +366,14 @@ Merge origin/dev again (PRs #20 and #21 landed after PR #23 was opened). Resolve
 How the output was used:
 Reviewed and committed the merge. package.json has luxon and cookie-parser once each; package-lock.json has luxon 3.7.2 once (npm 11's libc-only lock rewrite was not kept). AI_PROMPTS.txt keeps dev's entries, then mine. Tests 514/514 and lint passed. npm run build fails with 20 type errors in src/auth, src/hotels and src/users, and the app does not start (four dev files import { Connection } from 'mongoose' as a runtime import); origin/dev alone has the same errors and the same crash. Dev's AirlinesModule writes the same bagPolicy field names and checks ownership the same way (Airline.moderatorId = current user id), and its routes (POST /, GET /:id, PATCH /:id) do not overlap mine. Committed and pushed with these gaps noted in the PR, as approved.
 ================================================
+
+================================================
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: None (developer documentation and branch update)
+Prompt:
+Explore this codebase and document it in CLAUDE.md. Scan the project without fixing or editing anything, then write the documentation into backend/CLAUDE.md. Then update my branch with the latest version posted on GitHub.
+How the output was used:
+Scanned the repository read-only and reviewed the drafted CLAUDE.md. Saved it as backend/CLAUDE.md, below the existing @AGENTS.md import line; it covers commands, the database module and discriminator layout, and schema conventions. Fetched origin and fast-forwarded feat/payment, which had no commits of its own, to origin/dev (65 commits). No source code was changed and no tests were run.
+================================================
