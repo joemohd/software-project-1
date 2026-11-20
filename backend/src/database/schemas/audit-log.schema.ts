@@ -3,6 +3,7 @@ import { HydratedDocument, SchemaTypes, Types } from 'mongoose';
 import { User } from './user.schema.js';
 
 export enum AdminAction {
+    CREATE_MODERATOR = 'create_moderator',
     RESET_PASSWORD = 'reset_password',
     SUSPEND_USER = 'suspend_user',
     REACTIVATE_USER = 'reactivate_user',

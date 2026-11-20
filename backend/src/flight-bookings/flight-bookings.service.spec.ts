@@ -435,4 +435,96 @@ describe('FlightBookingsService (FLT-19, FLT-21)', () => {
       expect(releaseCalls()).toHaveLength(0);
     });
   });
+
+  describe('selectSeat (FLT-28)', () => {
+    const bookingWithSeats = (status = BookingStatus.CONFIRMED) => ({
+      _id: new Types.ObjectId(),
+      userId: new Types.ObjectId(userId),
+      reference: 'K7M2QX',
+      status,
+      segments: [
+        {
+          flightId: outbound._id,
+          cabinName: CabinType.ECONOMY,
+          seatPrice: 45000,
+          seats: [{ passengerIndex: 0, row: 10, column: 'A' }],
+        },
+      ],
+      passengers: [
+        {
+          fullName: 'Mona Hassan',
+          dateOfBirth: new Date('1990-05-31T00:00:00Z'),
+          type: PassengerType.ADULT,
+          passportNumber: 'A1234567',
+          extraBagWeights: [],
+        },
+        {
+          fullName: 'Baby Hassan',
+          dateOfBirth: new Date('2026-01-15T00:00:00Z'),
+          type: PassengerType.INFANT,
+          passportNumber: 'C1234567',
+          extraBagWeights: [],
+        },
+      ],
+      fareTotal: 49500,
+      baggageFee: 0,
+      cost: 49500,
+      holdExpiresAt: status === BookingStatus.PENDING_PAYMENT ? new Date('2026-11-19T12:10:00Z') : null,
+      pendingChange: null,
+    });
+
+    it('atomically reserves a new available seat, updates the booking and releases the old seat', async () => {
+      const booking = bookingWithSeats(BookingStatus.CONFIRMED);
+      bookingModel.findOne = vi.fn(() => query(booking));
+      bookingModel.findOneAndUpdate = vi.fn((_filter, update: { $set: Record<string, unknown> }) =>
+        query({
+          ...booking,
+          segments: [{ ...booking.segments[0], seats: update.$set['segments.0.seats'] }],
+        }),
+      );
+
+      const result = await service.selectSeat(userId, booking._id.toString(), {
+        segmentIndex: 0,
+        passengerIndex: 0,
+        seat: '11C',
+      });
+
+      expect(result.passengers[0].seats).toEqual([{ segment: 0, seat: '11C' }]);
+      expect(holdCalls()).toHaveLength(1);
+      expect(holdCalls()[0][1]).toEqual({
+        $set: { 'cabins.$[cabin].seats.$[seat].availability': SeatAvailability.BOOKED },
+      });
+      expect(releaseCalls()).toHaveLength(1);
+      expect(releaseCalls()[0][2]).toEqual({
+        arrayFilters: [
+          { 'cabin.name': CabinType.ECONOMY },
+          { $or: [{ 'seat.row': 10, 'seat.column': 'A', 'seat.availability': SeatAvailability.BOOKED }] },
+        ],
+      });
+    });
+
+    it('rejects assigning a seat to an infant or selecting a seat outside the booked cabin', async () => {
+      const booking = bookingWithSeats(BookingStatus.CONFIRMED);
+      bookingModel.findOne = vi.fn(() => query(booking));
+
+      await expect(
+        service.selectSeat(userId, booking._id.toString(), { passengerIndex: 1, seat: '11B' }),
+      ).rejects.toThrow(BadRequestException);
+
+      await expect(
+        service.selectSeat(userId, booking._id.toString(), { passengerIndex: 0, seat: '1A' }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects selecting an already occupied seat with 409', async () => {
+      const booking = bookingWithSeats(BookingStatus.CONFIRMED);
+      bookingModel.findOne = vi.fn(() => query(booking));
+      const seat11B = outbound.cabins[0].seats.find((s) => s.row === 11 && s.column === 'B')!;
+      seat11B.availability = SeatAvailability.BOOKED;
+
+      await expect(
+        service.selectSeat(userId, booking._id.toString(), { passengerIndex: 0, row: 11, column: 'B' }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
 });
