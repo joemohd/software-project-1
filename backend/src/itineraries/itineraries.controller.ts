@@ -9,15 +9,18 @@ import {
   Patch,
   Post,
   Query,
+  StreamableFile,
 } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -44,9 +47,11 @@ import {
   PublicSearchQueryDto,
 } from './dto/query.dto.js';
 import { CreateTransportCostDto } from './dto/transport-cost.dto.js';
+import { LinkBookingDto } from './dto/booking-link.dto.js';
 import { UpdateItineraryDto } from './dto/update-itinerary.dto.js';
 import { ItinerariesService } from './itineraries.service.js';
 import { ItinerarySearchService } from './itinerary-search.service.js';
+import { ItineraryPdfService } from './itinerary-pdf.service.js';
 import { TravelerOnly } from './itinerary.decorators.js';
 import { PublicItinerariesService } from './public-itineraries.service.js';
 
@@ -60,6 +65,7 @@ export class ItinerariesController {
     private readonly publicService: PublicItinerariesService,
     private readonly budgetSummaryService: BudgetSummaryService,
     private readonly searchService: ItinerarySearchService,
+    private readonly pdfService: ItineraryPdfService,
   ) {}
 
   // ---- public (guests allowed) ----
@@ -297,6 +303,43 @@ export class ItinerariesController {
     return this.itinerariesService.addTransportCost(userId, itineraryId, dto);
   }
 
+  // POST /api/itineraries/:id/bookings (ITN-27)
+  @Post(':id/bookings')
+  @TravelerOnly()
+  @ApiOperation({
+    summary: 'Link one of your booked flights or hotels to a day of the itinerary (ITN-27)',
+    description:
+      'Only your own Confirmed or Completed bookings. Linked bookings appear on the day and feed the budget summary in the platform currency (not converted, PAY-04).',
+  })
+  @ApiParam({ name: 'id', description: 'Itinerary id' })
+  @ApiCreatedResponse({ type: ItineraryDetailDto })
+  @ApiBadRequestResponse({ description: 'The booking is not Confirmed or Completed.' })
+  @ApiNotFoundResponse({ description: 'Itinerary, day or booking not found, or not yours.' })
+  @ApiConflictResponse({ description: 'Already linked to this itinerary.' })
+  linkBooking(
+    @CurrentUser('id') userId: string,
+    @Param('id') itineraryId: string,
+    @Body() dto: LinkBookingDto,
+  ): Promise<ItineraryDetailDto> {
+    return this.itinerariesService.linkBooking(userId, itineraryId, dto);
+  }
+
+  // DELETE /api/itineraries/:id/bookings/:bookingId (ITN-27)
+  @Delete(':id/bookings/:bookingId')
+  @TravelerOnly()
+  @ApiOperation({ summary: 'Unlink a booking from the itinerary; the booking itself is not changed (ITN-27)' })
+  @ApiParam({ name: 'id', description: 'Itinerary id' })
+  @ApiParam({ name: 'bookingId', description: 'Linked booking id' })
+  @ApiOkResponse({ type: ItineraryDetailDto })
+  @ApiNotFoundResponse({ description: 'Itinerary not found, or the booking is not linked to it.' })
+  unlinkBooking(
+    @CurrentUser('id') userId: string,
+    @Param('id') itineraryId: string,
+    @Param('bookingId') bookingId: string,
+  ): Promise<ItineraryDetailDto> {
+    return this.itinerariesService.unlinkBooking(userId, itineraryId, bookingId);
+  }
+
   // GET /api/itineraries/:id/budget-summary (ITN-14, ITN-18)
   @Get(':id/budget-summary')
   @TravelerOnly()
@@ -318,6 +361,22 @@ export class ItinerariesController {
     const itinerary = await this.itinerariesService.findOwned(userId, itineraryId);
     const currency = await this.budgetSummaryService.resolveCurrency(query.currency, userId);
     return this.budgetSummaryService.summarize(itinerary, currency);
+  }
+
+  // GET /api/itineraries/:id/pdf (ITN-28)
+  @Get(':id/pdf')
+  @TravelerOnly()
+  @ApiProduces('application/pdf')
+  @ApiOperation({
+    summary: 'Export or print my itinerary as a PDF (ITN-28)',
+    description:
+      'Days, activities, budget entries, transport costs, linked bookings and the budget total in your preferred currency. In Swagger, use "Download file" on the response.',
+  })
+  @ApiParam({ name: 'id', description: 'Itinerary id' })
+  @ApiOkResponse({ description: 'The itinerary as a PDF file.', schema: { type: 'string', format: 'binary' } })
+  @ApiNotFoundResponse({ description: 'Not found or not yours.' })
+  exportPdf(@CurrentUser('id') userId: string, @Param('id') itineraryId: string): Promise<StreamableFile> {
+    return this.pdfService.export(userId, itineraryId);
   }
 
   // GET /api/itineraries/:id/hotels (ITN-25)

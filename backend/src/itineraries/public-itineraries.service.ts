@@ -125,8 +125,8 @@ export class PublicItinerariesService {
   async view(itineraryId: string, currency: string): Promise<PublicItineraryDto> {
     const itinerary = await this.findPublic(itineraryId);
     const [detail, budget] = await Promise.all([
-      this.presenter.detail(itinerary),
-      this.budgetSummary.summarize(itinerary, currency),
+      this.presenter.detail(itinerary, { includeBookings: false }),
+      this.budgetSummary.summarize(itinerary, currency, { includeBookings: false }),
     ]);
     return { ...detail, budget };
   }
@@ -164,6 +164,8 @@ export class PublicItinerariesService {
           currency: budget.currency,
           note: budget.note ?? '',
         })),
+        // ITN-27: linked bookings belong to the original author and are not copied
+        bookingIds: [],
       };
     });
     const transportCosts = (source.transportCosts ?? [])

@@ -31,6 +31,7 @@ export interface DayRecord {
   notes: string;
   activities: ActivityRecord[];
   budgets: BudgetRecord[];
+  bookingIds: Types.ObjectId[];
 }
 
 export interface TransportRecord {

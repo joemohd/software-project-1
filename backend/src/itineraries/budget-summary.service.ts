@@ -15,7 +15,7 @@ import {
   roundMoney,
 } from './itinerary-rules.js';
 import type { ItineraryRecord } from './itinerary.types.js';
-import { DEFAULT_DISPLAY_CURRENCY } from './itineraries.constants.js';
+import { DEFAULT_DISPLAY_CURRENCY, PLATFORM_CURRENCY } from './itineraries.constants.js';
 
 /**
  * ITN-14, ITN-18, ITN-09: the itinerary's total budget by category, by day and by city group,
@@ -43,7 +43,11 @@ export class BudgetSummaryService {
     return DEFAULT_DISPLAY_CURRENCY;
   }
 
-  async summarize(itinerary: ItineraryRecord, currency: string): Promise<BudgetSummaryDto> {
+  async summarize(
+    itinerary: ItineraryRecord,
+    currency: string,
+    { includeBookings = true } = {},
+  ): Promise<BudgetSummaryDto> {
     // Invalid or unsupported codes are rejected with 400 before any conversion
     await this.presenter.assertCurrencies([currency]);
 
@@ -108,6 +112,30 @@ export class BudgetSummaryService {
       ),
     }));
 
+    // ITN-27: linked bookings feed the budget in the platform currency; PAY-04 keeps them unconverted
+    const linked = includeBookings ? await this.presenter.linkedBookings(itinerary) : new Map();
+    const bookingsByDay = itinerary.days.map((day, index) => ({
+      dayNumber: index + 1,
+      items: (day.bookingIds ?? []).map((id) => linked.get(id.toString())).filter(Boolean) as { type: string; amount: number }[],
+    }));
+    const sumOf = (type?: string) =>
+      roundMoney(
+        bookingsByDay
+          .flatMap((day) => day.items)
+          .filter((item) => !type || item.type === type)
+          .reduce((sum, item) => sum + item.amount, 0),
+      );
+    const bookings = {
+      currency: PLATFORM_CURRENCY,
+      flights: sumOf('flight'),
+      hotels: sumOf('hotel'),
+      total: sumOf(),
+      byDay: bookingsByDay.map((day) => ({
+        dayNumber: day.dayNumber,
+        total: roundMoney(day.items.reduce((sum, item) => sum + item.amount, 0)),
+      })),
+    };
+
     return {
       currency,
       rateDate: table.rateDate,
@@ -116,6 +144,7 @@ export class BudgetSummaryService {
       byDay,
       byCityGroup,
       total: breakdown.total,
+      bookings,
     };
   }
 }

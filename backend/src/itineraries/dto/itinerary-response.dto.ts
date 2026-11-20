@@ -29,6 +29,18 @@ export class CityRefDto {
   @ApiProperty() name: string;
 }
 
+export class LinkedBookingDto {
+  @ApiProperty() id: string;
+  @ApiProperty({ enum: ['flight', 'hotel'] }) type: 'flight' | 'hotel';
+  @ApiProperty() name: string;
+  @ApiProperty({ nullable: true, type: String, description: 'Booking reference (flights).' }) reference: string | null;
+  @ApiProperty() status: string;
+  @ApiProperty({ description: 'Price in the platform currency (PAY-04), not converted.' }) amount: number;
+  @ApiProperty({ example: 'USD' }) currency: string;
+  @ApiProperty({ nullable: true, type: String, description: 'Hotel check-in date.' }) checkIn: string | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Hotel nights.' }) nights: number | null;
+}
+
 export class DayResponseDto {
   @ApiProperty() id: string;
   @ApiProperty({ example: 1 }) dayNumber: number;
@@ -37,6 +49,7 @@ export class DayResponseDto {
   @ApiProperty() notes: string;
   @ApiProperty({ type: [ActivityResponseDto] }) activities: ActivityResponseDto[];
   @ApiProperty({ type: [BudgetEntryResponseDto] }) budgets: BudgetEntryResponseDto[];
+  @ApiProperty({ type: [LinkedBookingDto], description: 'ITN-27: linked flight and hotel bookings.' }) bookings: LinkedBookingDto[];
 }
 
 export class TransportCostResponseDto {
@@ -132,6 +145,19 @@ export class GroupBudgetDto {
   @ApiProperty() subtotal: number;
 }
 
+export class BookingDayTotalDto {
+  @ApiProperty() dayNumber: number;
+  @ApiProperty() total: number;
+}
+
+export class BookingTotalsDto {
+  @ApiProperty({ example: 'USD', description: 'Platform currency (PAY-04): booking prices are not converted.' }) currency: string;
+  @ApiProperty() flights: number;
+  @ApiProperty() hotels: number;
+  @ApiProperty() total: number;
+  @ApiProperty({ type: [BookingDayTotalDto] }) byDay: BookingDayTotalDto[];
+}
+
 export class BudgetSummaryDto {
   @ApiProperty({ example: 'EGP' }) currency: string;
   @ApiProperty({ description: 'Date of the exchange rates used.' }) rateDate: Date;
@@ -140,7 +166,8 @@ export class BudgetSummaryDto {
   @ApiProperty({ type: CategoryTotalsDto }) byCategory: CategoryTotalsDto;
   @ApiProperty({ type: [DayBudgetDto] }) byDay: DayBudgetDto[];
   @ApiProperty({ type: [GroupBudgetDto] }) byCityGroup: GroupBudgetDto[];
-  @ApiProperty() total: number;
+  @ApiProperty({ description: 'Total of your own entries, activity costs and transport costs, in `currency`.' }) total: number;
+  @ApiProperty({ type: BookingTotalsDto, description: 'ITN-27: linked bookings, in the platform currency (not converted, PAY-04).' }) bookings: BookingTotalsDto;
 }
 
 export class PublicItineraryDto extends ItineraryDetailDto {

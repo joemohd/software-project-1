@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -18,6 +19,8 @@ import type { CreateDayDto, ReorderDaysDto, UpdateDayDto } from './dto/day.dto.j
 import type { ItineraryDetailDto, ItineraryPageDto } from './dto/itinerary-response.dto.js';
 import type { CreateTransportCostDto, UpdateTransportCostDto } from './dto/transport-cost.dto.js';
 import type { UpdateItineraryDto } from './dto/update-itinerary.dto.js';
+import type { LinkBookingDto } from './dto/booking-link.dto.js';
+import { BookingStatus } from '../database/schemas/expense.schema.js';
 import { ItineraryPresenter } from './itinerary-presenter.service.js';
 import { moveItem, toUtcMidnight } from './itinerary-rules.js';
 import {
@@ -139,6 +142,7 @@ export class ItinerariesService {
         notes: dto.notes ?? '',
         activities: [],
         budgets: [],
+        bookingIds: [],
       });
     });
   }
@@ -351,6 +355,37 @@ export class ItinerariesService {
   async deleteTransportCost(userId: string, transportId: string): Promise<ItineraryDetailDto> {
     return this.mutate(this.childFilter(userId, 'transportCosts._id', transportId, 'Transport cost'), (itinerary) => {
       itinerary.transportCosts = itinerary.transportCosts.filter((entry) => !entry._id.equals(transportId));
+    });
+  }
+
+  // ---- ITN-27: link booked flights and hotels to days ----
+
+  async linkBooking(userId: string, itineraryId: string, dto: LinkBookingDto): Promise<ItineraryDetailDto> {
+    const bookingId = new Types.ObjectId(dto.bookingId);
+    const [booking] = await this.presenter.findBookings([bookingId]);
+    // Another user's booking answers 404 like a missing one, so its existence is not revealed
+    if (!booking || !booking.userId.equals(userId)) throw new NotFoundException('Booking not found.');
+    if (booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.COMPLETED) {
+      throw new BadRequestException('Only Confirmed or Completed bookings can be linked to an itinerary.');
+    }
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      const day = itinerary.days[this.dayIndex(itinerary, dto.dayId)];
+      const alreadyLinked = itinerary.days.some((entry) => (entry.bookingIds ?? []).some((id) => id.equals(bookingId)));
+      if (alreadyLinked) throw new ConflictException('This booking is already linked to this itinerary.');
+      day.bookingIds = [...(day.bookingIds ?? []), bookingId];
+    });
+  }
+
+  async unlinkBooking(userId: string, itineraryId: string, bookingId: string): Promise<ItineraryDetailDto> {
+    const id = toObjectIdOr404(bookingId, 'Booking');
+    return this.mutate(this.ownedFilter(userId, itineraryId), (itinerary) => {
+      let removed = false;
+      for (const day of itinerary.days) {
+        const remaining = (day.bookingIds ?? []).filter((entry) => !entry.equals(id));
+        removed ||= remaining.length !== (day.bookingIds ?? []).length;
+        day.bookingIds = remaining;
+      }
+      if (!removed) throw new NotFoundException('This booking is not linked to this itinerary.');
     });
   }
 

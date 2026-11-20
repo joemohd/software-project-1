@@ -378,3 +378,14 @@ How the output was used:
 Claude wrote the itineraries module directly in my repository on feature/ITN-01-itineraries-api. I reviewed the design decisions it reported (embedding days/activities/budgets/transport in the itinerary instead of the shared expenses collection, and ITN-25/26 returning the hotel/flight search criteria because HTL-11 and FLT-11/12 are not on dev yet) and kept them. The new unit tests were run on my machine: 9/9 passed (itinerary-rules.spec.ts and exchange-rate.service.spec.ts), and the TypeScript check showed no errors in src/itineraries (the remaining errors are in other modules and already exist on dev). The work was committed locally as 611fd2a. An end-to-end run through Swagger against the database is still pending because my backend/.env was not set up yet.
 Notes from the assistant: days, activities, budget entries and transport costs are embedded in the itinerary document (bounded, parent-owned data) instead of using the shared expenses collection, because the Expense/Activity/Transport schemas have no currency field and Activity requires a category id, which ITN-14/16/18 don't fit. The shared expense.schema.ts was not changed. ITN-25/26 return the derived search criteria and the ready-to-run /api/hotels/search and /api/flights/search requests, since HTL-11 and FLT-11/12 are not implemented on dev yet.
 ================================================
+
+================================================
+Date: 2026-11-20
+Student: Ahmed Mohamed Ali
+Tool: Claude (claude.ai, working directly in the repo through the desktop app)
+Related Requirement: ITN-27, ITN-28 (optional), ITN-01, ITN-12 (fix)
+Prompt:
+Implement the itinerary endpoints from the API table that are still missing (POST /api/itineraries/:id/bookings for ITN-27 and GET /api/itineraries/:id/pdf for ITN-28) and double-check the activity image endpoints. Test everything end to end before committing.
+How the output was used:
+Claude added ITN-27 (link my own Confirmed/Completed flight and hotel bookings to itinerary days, plus an unlink route; linked bookings appear on the day and in the budget summary in the platform currency, unconverted per PAY-04, and are hidden from the public view and not copied by clones) and ITN-28 (PDF export with pdfkit, added as a backend dependency). I kept both designs. Before that, an end-to-end run against a throwaway local MongoDB found a bug where deleting an itinerary always returned 404; it was fixed and committed. Unit tests: 12/12 passed. End-to-end run: 52/52 checks passed, including linking, duplicate/pending/other-user booking rejections, budget totals with bookings, the PDF download, and another user being refused the PDF. I reviewed the generated PDF. A real Cloudinary image upload is still untested because no Cloudinary key is configured locally.
+================================================

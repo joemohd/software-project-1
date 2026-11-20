@@ -4,15 +4,36 @@ import { Model, Types } from 'mongoose';
 import { City } from '../database/schemas/city.schema.js';
 import { Country } from '../database/schemas/country.schema.js';
 import { Currency } from '../database/schemas/currency.schema.js';
+import { Expense } from '../database/schemas/expense.schema.js';
 import { User } from '../database/schemas/user.schema.js';
 import type {
   CityGroupDto,
   CityRefDto,
   ItineraryDetailDto,
   ItinerarySummaryDto,
+  LinkedBookingDto,
 } from './dto/itinerary-response.dto.js';
 import { cityGroups, dayDate, isoDate } from './itinerary-rules.js';
 import { imageIdFromUrl, type ItineraryRecord } from './itinerary.types.js';
+import { PLATFORM_CURRENCY, PLATFORM_MINOR_UNITS } from './itineraries.constants.js';
+
+// ITN-27: the raw fields read from a flight / hotel booking in the expenses collection
+export interface BookingRecord {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  expenseType: string;
+  name: string;
+  cost?: number | null;
+  status?: string;
+  reference?: string | null;
+  startDate?: Date | null;
+  nightsCount?: number | null;
+}
+
+export const BOOKING_TYPES: Record<string, 'flight' | 'hotel'> = {
+  flight_booking: 'flight',
+  hotel_booking: 'hotel',
+};
 
 /**
  * Builds API responses for itineraries (names of cities and authors resolved in batches)
@@ -25,7 +46,42 @@ export class ItineraryPresenter {
     @InjectModel(Country.name) private readonly countryModel: Model<Country>,
     @InjectModel(Currency.name) private readonly currencyModel: Model<Currency>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Expense.name) private readonly expenseModel: Model<Expense>,
   ) {}
+
+  // ---- ITN-27: linked bookings ----
+
+  async findBookings(ids: Types.ObjectId[]): Promise<BookingRecord[]> {
+    const unique = [...new Set(ids.map((id) => id.toString()))];
+    if (!unique.length) return [];
+    return this.expenseModel
+      .find({
+        _id: { $in: unique.map((id) => new Types.ObjectId(id)) },
+        expenseType: { $in: Object.keys(BOOKING_TYPES) as Expense['expenseType'][] },
+      })
+      .select('userId expenseType name cost status reference startDate nightsCount')
+      .lean<BookingRecord[]>()
+      .exec();
+  }
+
+  toLinkedBooking(booking: BookingRecord): LinkedBookingDto {
+    return {
+      id: booking._id.toString(),
+      type: BOOKING_TYPES[booking.expenseType],
+      name: booking.name,
+      reference: booking.reference ?? null,
+      status: booking.status ?? '',
+      amount: (booking.cost ?? 0) / PLATFORM_MINOR_UNITS,
+      currency: PLATFORM_CURRENCY,
+      checkIn: booking.startDate ? isoDate(new Date(booking.startDate)) : null,
+      nights: booking.nightsCount ?? null,
+    };
+  }
+
+  async linkedBookings(itinerary: ItineraryRecord): Promise<Map<string, LinkedBookingDto>> {
+    const bookings = await this.findBookings(itinerary.days.flatMap((day) => day.bookingIds ?? []));
+    return new Map(bookings.map((booking) => [booking._id.toString(), this.toLinkedBooking(booking)]));
+  }
 
   // ---- reference-data checks ----
 
@@ -102,14 +158,16 @@ export class ItineraryPresenter {
 
   // ---- responses ----
 
-  async detail(itinerary: ItineraryRecord): Promise<ItineraryDetailDto> {
+  /** includeBookings is false for the public read-only view: another user's bookings stay private. */
+  async detail(itinerary: ItineraryRecord, { includeBookings = true } = {}): Promise<ItineraryDetailDto> {
     const cityIds = [
       ...itinerary.days.map((day) => day.cityId),
       ...itinerary.transportCosts.flatMap((cost) => [cost.fromCityId, cost.toCityId]),
     ];
-    const [names, authors] = await Promise.all([
+    const [names, authors, bookings] = await Promise.all([
       this.cityNames(cityIds),
       this.authorNames([itinerary.userId]),
+      includeBookings ? this.linkedBookings(itinerary) : Promise.resolve(new Map<string, LinkedBookingDto>()),
     ]);
     const dayNumberById = new Map(itinerary.days.map((day, index) => [day._id.toString(), index + 1]));
     const dayCount = itinerary.days.length;
@@ -158,6 +216,9 @@ export class ItineraryPresenter {
           currency: budget.currency,
           note: budget.note ?? '',
         })),
+        bookings: (day.bookingIds ?? [])
+          .map((id) => bookings.get(id.toString()))
+          .filter((booking): booking is LinkedBookingDto => !!booking),
       })),
       transportCosts: itinerary.transportCosts.map((cost) => ({
         id: cost._id.toString(),

@@ -26,3 +26,7 @@ export const DEFAULT_DISPLAY_CURRENCY = 'USD';
 
 // ITN-18: abort the FX API call after this many milliseconds and fall back to cached rates
 export const FX_REQUEST_TIMEOUT_MS = 5000;
+
+// PAY-04, ITN-27: bookings are priced in the single platform currency, stored as integer cents
+export const PLATFORM_CURRENCY = 'USD';
+export const PLATFORM_MINOR_UNITS = 100;

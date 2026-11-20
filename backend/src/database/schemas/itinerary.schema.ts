@@ -107,6 +107,10 @@ export class ItineraryDay {
 
     @Prop({ type: [SchemaFactory.createForClass(BudgetEntry)], default: [] })
     budgets: BudgetEntry[];
+
+    // ITN-27: the user's own confirmed flight / hotel bookings (expenses collection) linked to this day
+    @Prop({ type: [Types.ObjectId], default: [] })
+    bookingIds: Types.ObjectId[];
 }
 
 // ITN-16: intercity transport cost, attached to one day of the itinerary
