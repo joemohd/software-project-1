@@ -424,6 +424,22 @@ export class Room {
                         range.startDate >= otherRange.endDate || otherRange.startDate >= range.endDate
                     )
                 ),
+            message: 'Availability date ranges must have a positive duration and must not overlap'
+        }
+    })
+    availability: BlockedDateRange[];
+
+    @Prop({
+        type: [BlockedDateRange],
+        default: [],
+        validate: {
+            validator: (ranges: BlockedDateRange[]) =>
+                Array.isArray(ranges) && ranges.every((range, index) =>
+                    range.endDate > range.startDate &&
+                    ranges.slice(0, index).every((otherRange) =>
+                        range.startDate >= otherRange.endDate || otherRange.startDate >= range.endDate
+                    )
+                ),
             message: 'Blocked date ranges must have a positive duration and must not overlap'
         }
     })

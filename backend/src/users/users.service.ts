@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Connection, Model, Types } from 'mongoose';
+import { type Connection, type Model, Types } from 'mongoose';
 import { toProfile } from '../auth/auth.helper.js';
 import type { AuthenticatedUser, UserRecord } from '../auth/auth.types.js';
 import { MessageResponseDto } from '../auth/dto/auth-response.dto.js';
