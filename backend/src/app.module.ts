@@ -7,19 +7,24 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { UploadModule } from './common/upload/upload.module.js';
 import { FlightsModule } from './flights/flights.module.js';
+import { BlogModule } from './blog/blog.module.js';
+import { AdminModule } from './admin/admin.module.js';
+import { UsersModule } from './users/users.module.js';
 import { HotelsModule } from './hotels/hotels.module.js';
+import { AirlinesModule } from './airlines/airlines.module.js';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      load: [databaseConfig],
-    }),
+    ConfigModule.forRoot({ isGlobal: true, load: [databaseConfig] }),
     DatabaseModule,
     AuthModule,
     UploadModule,
     FlightsModule,
+    BlogModule,
+    AdminModule,
+    UsersModule,
     HotelsModule,
+    AirlinesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

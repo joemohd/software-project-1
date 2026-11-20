@@ -9,6 +9,7 @@ import type {
   IssuedTokens,
   JwtPayload,
   LoginAttemptsUpdate,
+  MailMessage,
   UserRecord,
 } from './auth.types.js';
 import type { UserProfileDto } from './dto/auth-response.dto.js';
@@ -41,6 +42,7 @@ export const MESSAGES = {
   passwordReset: 'Your password has been reset. Please log in with your new password.',
   wrongCurrentPassword: 'Current password is incorrect.',
   samePassword: 'New password must be different from the current password.',
+  passwordChangeRequired: 'You must set a new password before logging in. Provide newPassword.',
   passwordChanged: 'Your password has been changed.',
   suspended: 'Your account has been suspended.',
   deactivated: 'This account has been deactivated.',
@@ -55,14 +57,15 @@ export const generateToken = (): string => randomBytes(32).toString('hex');
 
 export const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 
-export const hashPassword = (password: string): Promise<string> => bcrypt.hash(password, BCRYPT_ROUNDS);
+export const hashPassword = (password: string): Promise<string> => bcrypt.hash(password, BCRYPT_ROUNDS);//12 rounds
 
 export const passwordMatches = (password: string, hash: string): Promise<boolean> => bcrypt.compare(password, hash);
 
-export const accessTokenPayload = (userId: Types.ObjectId | string, role: UserRole): JwtPayload => ({
+export const accessTokenPayload = (userId: Types.ObjectId | string, role: UserRole, sessionVersion = 0): JwtPayload => ({
   sub: String(userId),
   role,
   type: 'access',
+  ...(sessionVersion > 0 && { sessionVersion }),
 });
 
 export const emailVerificationPayload = (userId: Types.ObjectId | string): EmailVerificationPayload => ({
@@ -78,9 +81,9 @@ export const buildFrontendLink = (frontendUrl: string, path: string, token: stri
 /* Input normalisation & time                                         */
 /* ------------------------------------------------------------------ */
 
-export const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+export const normalizeEmail = (email: string): string => email.trim().toLowerCase();// change the email to be lower case.
 
-export const normalizeUsername = (username: string): string => username.trim().toLowerCase();
+export const normalizeUsername = (username: string): string => username.trim().toLowerCase();// change the username to be lower case.
 
 export const expiryDate = (durationMs: number, now = Date.now()): Date => new Date(now + durationMs);
 
@@ -172,3 +175,48 @@ export const clearAuthCookies = (res: Response, secure: boolean): Response =>
   res
     .clearCookie(ACCESS_TOKEN_COOKIE, cookieOptions(secure, '/'))
     .clearCookie(REFRESH_TOKEN_COOKIE, cookieOptions(secure, REFRESH_TOKEN_PATH));
+
+/* ------------------------------------------------------------------ */
+/* Emails (GEN-01-B)                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Makes user-provided text (e.g. a name) safe to put inside HTML. */
+export const escapeHtml = (text: string): string =>
+  text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+
+const emailLayout = (greeting: string, paragraph: string, buttonText: string, link: string, footnote: string): string => `
+  <div style="font-family: Arial, sans-serif; max-width: 520px; margin: auto; color: #222">
+    <p>${greeting}</p>
+    <p>${paragraph}</p>
+    <p><a href="${link}" style="display: inline-block; padding: 10px 18px; background: #1a73e8; color: #fff; text-decoration: none; border-radius: 4px">${buttonText}</a></p>
+    <p style="font-size: 13px; color: #555">Or open this link: <br><a href="${link}">${link}</a></p>
+    <p style="font-size: 13px; color: #555">${footnote}</p>
+  </div>`;
+
+/** ACC-02: sent after registration. */
+export const verificationEmail = (to: string, fullName: string, link: string): MailMessage => ({
+  to,
+  subject: 'Verify your email address',
+  text: `Hi ${fullName},\n\nPlease verify your email address by opening this link:\n${link}\n\nThe link expires in 24 hours. You need a verified email to make bookings.`,
+  html: emailLayout(
+    `Hi ${escapeHtml(fullName)},`,
+    'Thanks for registering. Please verify your email address. You need a verified email to make bookings.',
+    'Verify email',
+    link,
+    'The link expires in 24 hours. If you did not create an account, you can ignore this email.',
+  ),
+});
+
+/** ACC-07: sent by forgot-password. */
+export const passwordResetEmail = (to: string, fullName: string, link: string): MailMessage => ({
+  to,
+  subject: 'Reset your password',
+  text: `Hi ${fullName},\n\nTo reset your password, open this link:\n${link}\n\nThe link expires in 30 minutes and can be used once. If you did not ask for this, ignore this email.`,
+  html: emailLayout(
+    `Hi ${escapeHtml(fullName)},`,
+    'We received a request to reset your password.',
+    'Reset password',
+    link,
+    'The link expires in 30 minutes and can be used once. If you did not ask for this, you can ignore this email; your password will not change.',
+  ),
+});

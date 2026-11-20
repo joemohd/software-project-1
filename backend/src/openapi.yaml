@@ -1,0 +1,955 @@
+# API contract (OpenAPI 3). Generated from the Swagger decorators in the code.
+# Blog section: BLG-01 to BLG-10, BLG-12, BLG-13 (backend/src/blog).
+# Teammates: add your module's paths under "paths:" and schemas under "components.schemas".
+
+openapi: 3.0.0
+info:
+  title: Travel Planning and Booking API
+  description: ''
+  version: '1.0'
+  contact: {}
+tags:
+  - name: Blog
+    description: 'Blog and community: BLG-01 to BLG-10, BLG-12, BLG-13'
+paths:
+  /api/posts:
+    get:
+      description: >-
+        Filter by tag with "tag" and search the title, tags and author name with "q". Search results are ordered by
+        likes + comments, newest first on ties; without "q" the newest posts come first.
+      operationId: BlogController_listPosts
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: q
+          required: false
+          in: query
+          description: >-
+            Keyword matched against the title, tags and author name. Results are ordered by likes + comments, newest
+            first on ties.
+          schema:
+            maxLength: 100
+            type: string
+        - name: tag
+          required: false
+          in: query
+          description: Only posts with this tag.
+          schema:
+            maxLength: 30
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPostsPageDto'
+      summary: Browse or search published posts (BLG-02, BLG-09)
+      tags:
+        - Blog
+    post:
+      operationId: BlogController_createPost
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePostDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Validation failed.
+        '401':
+          description: Not logged in.
+      security:
+        - access_token: []
+      summary: Create a post as Draft or Published (BLG-01)
+      tags:
+        - Blog
+  /api/posts/mine:
+    get:
+      operationId: BlogController_listMyPosts
+      parameters:
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPostsPageDto'
+        '401':
+          description: Not logged in.
+      security:
+        - access_token: []
+      summary: List my own posts, drafts included (BLG-03)
+      tags:
+        - Blog
+  /api/posts/mine/{id}:
+    get:
+      operationId: BlogController_getMyPost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: Open one of my posts, drafts included (BLG-03, BLG-04)
+      tags:
+        - Blog
+  /api/posts/{id}:
+    get:
+      operationId: BlogController_getPost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: commentsPage
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPostDto'
+        '404':
+          description: Post not found, not published or hidden.
+      summary: Open a published post with its like count and comments (BLG-02)
+      tags:
+        - Blog
+    patch:
+      operationId: BlogController_updatePost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePostDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: Validation failed.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: 'Edit my post: title, body, tags or status (BLG-04, BLG-08)'
+      tags:
+        - Blog
+    delete:
+      operationId: BlogController_deletePost
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Post deleted.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: Delete my post with its likes and comments (BLG-04)
+      tags:
+        - Blog
+  /api/posts/{id}/comments:
+    post:
+      operationId: BlogController_addComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponseDto'
+        '400':
+          description: Empty comment or longer than 500 characters.
+        '401':
+          description: Not logged in.
+        '404':
+          description: Post not found or not published.
+      security:
+        - access_token: []
+      summary: Comment on a published post (BLG-05)
+      tags:
+        - Blog
+  /api/posts/{id}/like:
+    post:
+      operationId: BlogController_like
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeStatusDto'
+        '401':
+          description: Not logged in.
+        '404':
+          description: Post not found or not published.
+        '409':
+          description: You already liked this post.
+      security:
+        - access_token: []
+      summary: Like a published post once (BLG-06)
+      tags:
+        - Blog
+    delete:
+      operationId: BlogController_unlike
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LikeStatusDto'
+        '401':
+          description: Not logged in.
+        '404':
+          description: You have not liked this post.
+      security:
+        - access_token: []
+      summary: Remove my like from a post (BLG-06)
+      tags:
+        - Blog
+  /api/posts/{id}/images:
+    post:
+      operationId: BlogController_addImage
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+                - file
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '400':
+          description: No file, wrong type, too large, or the post already has 5 images.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found.
+      security:
+        - access_token: []
+      summary: Attach a JPG or PNG image (max 5 MB, max 5 per post) to my post (BLG-10, GEN-08)
+      tags:
+        - Blog
+  /api/posts/{id}/images/{imageId}:
+    delete:
+      operationId: BlogController_removeImage
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: imageId
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post or image not found.
+      security:
+        - access_token: []
+      summary: Remove an image from my post (BLG-10)
+      tags:
+        - Blog
+  /api/posts/{id}/itinerary:
+    patch:
+      operationId: BlogController_attachItinerary
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttachItineraryDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostResponseDto'
+        '401':
+          description: Not logged in.
+        '403':
+          description: The post belongs to another user.
+        '404':
+          description: Post not found, or the itinerary is not one of yours.
+      security:
+        - access_token: []
+      summary: Attach one of my itineraries to my post, or detach it (BLG-13)
+      tags:
+        - Blog
+  /api/comments/{id}:
+    patch:
+      operationId: CommentsController_updateComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentResponseDto'
+        '400':
+          description: Empty comment or longer than 500 characters.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The comment belongs to another user.
+        '404':
+          description: Comment not found.
+      security:
+        - access_token: []
+      summary: Edit my comment (BLG-07)
+      tags:
+        - Blog
+    delete:
+      operationId: CommentsController_deleteComment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Comment deleted.
+        '401':
+          description: Not logged in.
+        '403':
+          description: The comment belongs to another user.
+        '404':
+          description: Comment not found.
+      security:
+        - access_token: []
+      summary: Delete my comment (BLG-07)
+      tags:
+        - Blog
+  /api/tags/{tag}/posts:
+    get:
+      operationId: TagsController_listByTag
+      parameters:
+        - name: tag
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: page
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicPostsPageDto'
+      summary: List published posts with a tag, newest first (BLG-08)
+      tags:
+        - Blog
+  /api/authors/{id}:
+    get:
+      operationId: AuthorsController_getAuthor
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: postsPage
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+        - name: itinerariesPage
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            default: 1
+            type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthorPageDto'
+        '404':
+          description: Author not found or deactivated.
+      summary: 'Public author page: name, join date, published posts and public itineraries (BLG-12)'
+      tags:
+        - Blog
+components:
+  securitySchemes:
+    cookie:
+      type: apiKey
+      in: cookie
+      name: access_token
+  schemas:
+    AttachItineraryDto:
+      type: object
+      properties:
+        itineraryId:
+          type: string
+          nullable: true
+          example: 6650f1c2a1b2c3d4e5f60718
+          description: One of your own itineraries, or null to detach the current one.
+      required:
+        - itineraryId
+    AttachedItineraryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        startDate:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - startDate
+    AuthorItinerariesPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuthorItineraryDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    AuthorItineraryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        startDate:
+          format: date-time
+          type: string
+        dayCount:
+          type: number
+      required:
+        - id
+        - title
+        - startDate
+        - dayCount
+    AuthorPageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        username:
+          type: string
+        joinedAt:
+          format: date-time
+          type: string
+          description: When the author joined.
+        posts:
+          $ref: '#/components/schemas/PublicPostsPageDto'
+        itineraries:
+          $ref: '#/components/schemas/AuthorItinerariesPageDto'
+      required:
+        - id
+        - name
+        - username
+        - joinedAt
+        - posts
+        - itineraries
+    AuthorSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+          nullable: true
+        name:
+          type: string
+      required:
+        - name
+    CommentDto:
+      type: object
+      properties:
+        text:
+          type: string
+          example: Great tips, thanks!
+          maxLength: 500
+      required:
+        - text
+    CommentResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        postId:
+          type: string
+        text:
+          type: string
+        author:
+          $ref: '#/components/schemas/AuthorSummaryDto'
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - postId
+        - text
+        - author
+        - createdAt
+        - updatedAt
+    CommentsPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentResponseDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    CreatePostDto:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Three days in Cairo
+          maxLength: 200
+        body:
+          type: string
+          example: We started our trip at the Egyptian Museum...
+        tags:
+          example:
+            - egypt
+            - museums
+          maxItems: 5
+          description: Up to 5 tags, each at most 30 characters. Stored in lowercase; duplicates are merged.
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - published
+          default: draft
+      required:
+        - title
+        - body
+    LikeStatusDto:
+      type: object
+      properties:
+        liked:
+          type: boolean
+        likeCount:
+          type: number
+      required:
+        - liked
+        - likeCount
+    MyPostSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - published
+            - draft
+            - archived
+        tags:
+          type: array
+          items:
+            type: string
+        likeCount:
+          type: number
+        commentCount:
+          type: number
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - status
+        - tags
+        - likeCount
+        - commentCount
+        - createdAt
+        - updatedAt
+    MyPostsPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/MyPostSummaryDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    PostImageDto:
+      type: object
+      properties:
+        id:
+          type: string
+        url:
+          type: string
+      required:
+        - id
+        - url
+    PostResponseDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        status:
+          type: string
+          enum:
+            - published
+            - draft
+            - archived
+        tags:
+          type: array
+          items:
+            type: string
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostImageDto'
+        authorId:
+          type: string
+        itineraryId:
+          type: string
+          nullable: true
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - body
+        - status
+        - tags
+        - images
+        - authorId
+        - createdAt
+        - updatedAt
+    PublicPostDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        body:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/PostImageDto'
+        author:
+          $ref: '#/components/schemas/AuthorSummaryDto'
+        createdAt:
+          format: date-time
+          type: string
+        updatedAt:
+          format: date-time
+          type: string
+        likeCount:
+          type: number
+        comments:
+          description: Comments in chronological order.
+          allOf:
+            - $ref: '#/components/schemas/CommentsPageDto'
+        itinerary:
+          nullable: true
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/AttachedItineraryDto'
+      required:
+        - id
+        - title
+        - body
+        - tags
+        - images
+        - author
+        - createdAt
+        - updatedAt
+        - likeCount
+        - comments
+    PublicPostSummaryDto:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        excerpt:
+          type: string
+          description: The first 200 characters of the body.
+        tags:
+          type: array
+          items:
+            type: string
+        author:
+          $ref: '#/components/schemas/AuthorSummaryDto'
+        likeCount:
+          type: number
+        commentCount:
+          type: number
+        createdAt:
+          format: date-time
+          type: string
+      required:
+        - id
+        - title
+        - excerpt
+        - tags
+        - author
+        - likeCount
+        - commentCount
+        - createdAt
+    PublicPostsPageDto:
+      type: object
+      properties:
+        page:
+          type: number
+        pageSize:
+          type: number
+        total:
+          type: number
+        totalPages:
+          type: number
+        items:
+          description: Empty when nothing matches ("no results").
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicPostSummaryDto'
+      required:
+        - page
+        - pageSize
+        - total
+        - totalPages
+        - items
+    UpdatePostDto:
+      type: object
+      properties:
+        title:
+          type: string
+          example: Three days in Cairo
+          maxLength: 200
+        body:
+          type: string
+          example: We started our trip at the Egyptian Museum...
+        tags:
+          example:
+            - egypt
+            - museums
+          maxItems: 5
+          description: Up to 5 tags, each at most 30 characters. Stored in lowercase; duplicates are merged.
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum:
+            - draft
+            - published
+          default: draft
