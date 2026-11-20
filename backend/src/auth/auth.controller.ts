@@ -1,5 +1,17 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Patch, Post, Query, Res } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
+import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiCookieAuth,
+  ApiCreatedResponse,
+  ApiForbiddenResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import type { Response } from 'express';
 import authConfig from './auth.config.js';
 import { clearAuthCookies, REFRESH_TOKEN_COOKIE, setAuthCookies } from './auth.helper.js';
@@ -21,6 +33,7 @@ import { RegisterDto } from './dto/register.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { VerifyEmailQueryDto } from './dto/verify-email.dto.js';
 
+@ApiTags('Auth')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -32,6 +45,10 @@ export class AuthController {
   @Public()
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Register a new account (ACC-01)' })
+  @ApiCreatedResponse({ type: RegisterResponseDto, description: 'Account created' })
+  @ApiBadRequestResponse({ description: 'Invalid fields, weak password, consent not given, or unknown country' })
+  @ApiConflictResponse({ description: 'Email or username already registered' })
   register(@Body() dto: RegisterDto): Promise<RegisterResponseDto> {
     return this.authService.register(dto);
   }
@@ -39,6 +56,9 @@ export class AuthController {
   // GET /api/auth/verify-email?token=... (ACC-02, optional)
   @Public()
   @Get('verify-email')
+  @ApiOperation({ summary: 'Verify an email address from the emailed link (ACC-02)' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'Link invalid or expired' })
   verifyEmail(@Query() query: VerifyEmailQueryDto): Promise<MessageResponseDto> {
     return this.authService.verifyEmail(query);
   }
@@ -47,6 +67,14 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Log in (ACC-04, ACC-05)',
+    description: 'Sets the access_token and refresh_token httpOnly cookies. Tokens are never returned in the body.',
+  })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Invalid email or password' })
+  @ApiForbiddenResponse({ description: 'Account suspended or deactivated' })
+  @ApiResponse({ status: HttpStatus.LOCKED, description: 'Locked for 15 minutes after 5 failed attempts' })
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response): Promise<LoginResponseDto> {
     const { user, tokens } = await this.authService.login(dto);
     setAuthCookies(res, tokens, this.config.cookieSecure);
@@ -58,6 +86,13 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Get new tokens using the refresh_token cookie (ACC-06)',
+    description: 'Rotates the refresh token. Call this when another request returns 401.',
+  })
+  @ApiOkResponse({ type: LoginResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Session expired or revoked; cookies are cleared' })
+  @ApiForbiddenResponse({ description: 'Account suspended or deactivated' })
   async refresh(
     @Cookie(REFRESH_TOKEN_COOKIE) refreshToken: string | undefined,
     @Res({ passthrough: true }) res: Response,
@@ -77,6 +112,8 @@ export class AuthController {
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Log out: revokes the session and clears the cookies (ACC-06)' })
+  @ApiOkResponse({ type: MessageResponseDto })
   async logout(
     @Cookie(REFRESH_TOKEN_COOKIE) refreshToken: string | undefined,
     @Res({ passthrough: true }) res: Response,
@@ -90,6 +127,11 @@ export class AuthController {
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Request a password-reset link by email (ACC-07)',
+    description: 'Always returns the same message, whether or not the email is registered.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
   forgotPassword(@Body() dto: ForgotPasswordDto): Promise<MessageResponseDto> {
     return this.authService.forgotPassword(dto);
   }
@@ -99,12 +141,20 @@ export class AuthController {
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Set a new password using the emailed reset token (ACC-07)' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'Token invalid, expired or already used, or weak password' })
   resetPassword(@Body() dto: ResetPasswordDto): Promise<MessageResponseDto> {
     return this.authService.resetPassword(dto);
   }
 
   // PATCH /api/auth/change-password (ACC-08) - any authenticated user
   @Patch('change-password')
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Change your password (ACC-08)', description: 'Signs out your other sessions.' })
+  @ApiOkResponse({ type: MessageResponseDto })
+  @ApiBadRequestResponse({ description: 'Current password incorrect, or new password invalid' })
+  @ApiUnauthorizedResponse({ description: 'Not logged in' })
   changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,
@@ -115,6 +165,11 @@ export class AuthController {
 
   // GET /api/auth/me (ACC-04, ACC-19)
   @Get('me')
+  @ApiCookieAuth()
+  @ApiOperation({ summary: 'Get the logged-in user (ACC-19)' })
+  @ApiOkResponse({ type: UserProfileDto })
+  @ApiForbiddenResponse({ description: 'Account suspended, deactivated or required to change its password' })
+  @ApiUnauthorizedResponse({ description: 'Not logged in' })
   me(@CurrentUser() user: AuthenticatedUser): Promise<UserProfileDto> {
     return this.authService.me(user);
   }

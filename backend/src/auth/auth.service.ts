@@ -31,7 +31,9 @@ import {
   normalizeUsername,
   PASSWORD_RESET_TTL_MS,
   passwordMatches,
+  passwordResetEmail,
   toProfile,
+  verificationEmail,
 } from './auth.helper.js';
 import type { AuthenticatedUser, AuthSession, EmailVerificationPayload, UserRecord } from './auth.types.js';
 import { MessageResponseDto, RegisterResponseDto, UserProfileDto } from './dto/auth-response.dto.js';
@@ -41,6 +43,7 @@ import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { VerifyEmailQueryDto } from './dto/verify-email.dto.js';
+import { MailService } from './mail.service.js';
 import { RefreshToken } from './schemas/refresh-token.schema.js';
 
 @Injectable()
@@ -54,6 +57,7 @@ export class AuthService {
     @InjectModel(PasswordResetToken.name) private readonly passwordResetTokenModel: Model<PasswordResetToken>,
     @InjectModel(RefreshToken.name) private readonly refreshTokenModel: Model<RefreshToken>,
     private readonly jwtService: JwtService,
+    private readonly mailService: MailService,
     @Inject(authConfig.KEY) private readonly config: ConfigType<typeof authConfig>,
   ) {}
 
@@ -61,7 +65,7 @@ export class AuthService {
   async register(dto: RegisterDto): Promise<RegisterResponseDto> {
     const emailAddress = normalizeEmail(dto.emailAddress);
     const username = normalizeUsername(dto.username);
-
+    //checks if the email and username are unique , and if the country exist or not.
     const [emailTaken, usernameTaken, countryExists] = await Promise.all([
       this.userModel.exists({ emailAddress }).exec(),
       this.userModel.exists({ username }).exec(),
@@ -79,15 +83,15 @@ export class AuthService {
       phoneNumber: dto.phoneNumber,
       countryOfOriginId: new Types.ObjectId(dto.countryOfOriginId),
       role: UserRole.USER, // ACC-18: admins are seeded, never self-registered
+      termsAcceptedAt: new Date(), // ACC-01: the DTO only lets the request through when acceptedTerms is true
     });
-    // TODO(ACC-01): the user schema has no field to record the terms-and-privacy consent (dto.acceptedTerms)
 
     const verificationToken = await this.jwtService.signAsync(emailVerificationPayload(user._id), {
       expiresIn: EMAIL_VERIFICATION_TTL_SECONDS,
     });
     const verificationLink = buildFrontendLink(this.config.frontendUrl, 'verify-email', verificationToken);
-    // TODO(ACC-02, GEN-01-B): email `verificationLink` to the user via SMTP, then remove the `void` below
-    void verificationLink;
+    // A failed email doesn't undo the registration; MailService logs the error
+    await this.mailService.send(verificationEmail(user.emailAddress, user.fullName, verificationLink));
 
     return { user: toProfile(user) };
   }
@@ -122,16 +126,31 @@ export class AuthService {
     if (lockRemaining > 0) throw lockedException(lockRemaining);
 
     if (!(await passwordMatches(dto.password, user.passwordHash))) {
-      const update = failedLoginUpdate(user);
-      await this.updateUser(user._id, update);
-      throw update.loginAttemptsResetAt ? lockedException(LOCKOUT_MS) : new UnauthorizedException(MESSAGES.invalidCredentials);
+      const update = failedLoginUpdate(user);// keep track of the number of failed login attempt
+      await this.updateUser(user._id, update);// update the login attempts in user model
+      throw update.loginAttemptsResetAt ? lockedException(LOCKOUT_MS) : new UnauthorizedException(MESSAGES.invalidCredentials);// if the account not locked it sends wrong credentials but if it looked it return the remainning time
     }
 
     // Checked only after the password, so the account status isn't revealed to someone guessing
     if (isBlocked(user.status)) throw new ForbiddenException(blockedStatusMessage(user.status));
 
     await this.updateUser(user._id, clearedLoginAttempts()); // ACC-05: success resets the counter
-    // TODO(ACC-07a, ACC-13): force a password change on next login once the user schema has a flag for it
+
+    // check if the user got susbended before and if so force the user to change password
+    if (user.mustChangePassword) {
+      if (!dto.newPassword) {
+        throw new ForbiddenException({ message: MESSAGES.passwordChangeRequired, mustChangePassword: true });
+      }
+      if (await passwordMatches(dto.newPassword, user.passwordHash)) {
+        throw new BadRequestException(MESSAGES.samePassword);
+      }
+
+      await this.updateUser(user._id, {
+        passwordHash: await hashPassword(dto.newPassword),
+        mustChangePassword: false,
+      });
+      await this.revokeSessions(user._id);
+    }
 
     return this.createSession(user);
   }
@@ -148,6 +167,10 @@ export class AuthService {
     if (isBlocked(user.status)) {
       await this.revokeSessions(user._id);
       throw new ForbiddenException(blockedStatusMessage(user.status));
+    }
+    if (user.mustChangePassword) {
+      await this.revokeSessions(user._id);
+      throw new ForbiddenException({ message: MESSAGES.passwordChangeRequired, mustChangePassword: true });
     }
 
     return this.createSession(user);
@@ -178,8 +201,7 @@ export class AuthService {
         .exec();
 
       const resetLink = buildFrontendLink(this.config.frontendUrl, 'reset-password', token);
-      // TODO(ACC-07, GEN-01-B): email `resetLink` to the user via SMTP, then remove the `void` below
-      void resetLink;
+      await this.mailService.send(passwordResetEmail(user.emailAddress, user.fullName, resetLink));
     }
 
     // Same answer either way, so this endpoint can't be used to discover registered emails
@@ -197,6 +219,7 @@ export class AuthService {
 
     const updated = await this.updateUser(resetToken.userId, {
       passwordHash: await hashPassword(dto.newPassword),
+      mustChangePassword: false,
       ...clearedLoginAttempts(),
     });
     if (!updated) throw new BadRequestException(MESSAGES.invalidResetLink);
@@ -220,7 +243,10 @@ export class AuthService {
     }
     if (dto.currentPassword === dto.newPassword) throw new BadRequestException(MESSAGES.samePassword);
 
-    await this.updateUser(record._id, { passwordHash: await hashPassword(dto.newPassword) });
+    await this.updateUser(record._id, {
+      passwordHash: await hashPassword(dto.newPassword),
+      mustChangePassword: false,
+    });
     await this.revokeSessions(record._id, currentRefreshToken); // sign out every other session
     return { message: MESSAGES.passwordChanged };
   }
@@ -257,7 +283,7 @@ export class AuthService {
   private async createSession(user: UserRecord): Promise<AuthSession> {
     const refreshToken = generateToken();
     const [accessToken] = await Promise.all([
-      this.jwtService.signAsync(accessTokenPayload(user._id, user.role)),
+      this.jwtService.signAsync(accessTokenPayload(user._id, user.role, user.sessionVersion)),
       this.refreshTokenModel.create({
         userId: user._id,
         tokenHash: hashToken(refreshToken),

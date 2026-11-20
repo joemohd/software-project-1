@@ -104,4 +104,28 @@ describe('JwtAuthGuard', () => {
       isVerified: false,
     });
   });
+
+  it('rejects an access token issued before an administrator reset the password', async () => {
+    const { guard } = guardWith({
+      _id: userId, role: UserRole.USER, status: UserActivityStatus.ACTIVE, isVerified: true, sessionVersion: 1,
+    });
+    await expect(guard.canActivate(contextFor(requestWithCookie(await validToken())))).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('accepts a new token after the required password change', async () => {
+    const { guard } = guardWith({
+      _id: userId, role: UserRole.USER, status: UserActivityStatus.ACTIVE, isVerified: true, sessionVersion: 1,
+    });
+    const token = await jwtService.signAsync({ sub: userId.toString(), type: 'access', sessionVersion: 1 });
+    await expect(guard.canActivate(contextFor(requestWithCookie(token)))).resolves.toBe(true);
+  });
+
+  it('blocks private endpoints until the temporary password has been changed', async () => {
+    const { guard } = guardWith({
+      _id: userId, role: UserRole.USER, status: UserActivityStatus.ACTIVE, isVerified: true, mustChangePassword: true,
+    });
+    await expect(guard.canActivate(contextFor(requestWithCookie(await validToken())))).rejects.toMatchObject({
+      status: 403, response: { mustChangePassword: true },
+    });
+  });
 });

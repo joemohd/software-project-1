@@ -148,4 +148,65 @@ PROMPT: Implement every endpoint assigned to me (Rushdy.md): BLG-01 to BLG-10, B
 
 RESPONSE: Added the blog module in backend/src/blog/ (controllers for /api/posts, /api/comments, /api/tags and /api/authors; BlogService, PublicBlogService, CommentsService, LikesService; DTOs with class-validator and Swagger decorators; unit tests) and registered BlogModule in app.module.ts. Used the existing schemas, global JWT guard, @CurrentUser/@Public decorators and the shared UploadService unchanged. Published posts by deactivated authors are hidden and their comments show as "Deleted user" (ACC-12); Archived posts are treated as hidden (GEN-10). Added GET /api/posts/mine/:id so an author can open a draft for editing. I reviewed the generated code, and the build, lint and all unit tests pass.
 
-================================================
+DATE: 2026-11-20
+STUDENT: Not specified
+AGENT: Codex
+REQUIREMENTS: ACC-07a, ACC-13
+PROMPT: Implement the comment in backend/src/auth/auth.service.ts:138 to force a password change on next login once the user schema has a flag for it. Remove the comment and keep implementation and checks focused.
+RESPONSE: Added a mustChangePassword schema flag and optional validated newPassword login field. Flagged accounts must replace their temporary password before receiving a session; password replacement revokes old sessions, and password reset/change clears the flag. Added focused login regression coverage.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-07, GEN-01-B
+PROMPT: check why forgot password don't send the link
+RESPONSE: Traced the reset-email flow and checked SMTP configuration without exposing credentials. The system DNS resolver fails to resolve smtp.gmail.com (EAI_AGAIN / DNS server failure). Resolving through 1.1.1.1 allows SMTP connection and authentication to succeed; no email was sent during verification. MailService catches delivery failures and forgotPassword intentionally returns its generic acknowledgement. All 40 focused auth/mail tests passed. Recommended fixing the local DNS configuration and restarting the backend; no application code changes were needed.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-07a, ACC-09, ACC-11, ACC-12, GEN-07
+PROMPT: create the four missing apis, and look at their description in the functional-requirements.csv. The supplied image identifies POST /api/admin/users/:id/reset-password and GET, PATCH, DELETE /api/users/me.
+RESPONSE: Added admin and users feature modules with cookie authentication, role/ownership enforcement, validated DTOs and Swagger documentation. Admin resets hash a temporary password, require its replacement at next login, invalidate access/refresh tokens and reset links, and record an audit log in a transaction. Profile edits accept only name, E.164 phone number and an existing preferred currency. Confirmed self-deactivation is restricted to registered users, blocks confirmed bookings whose travel/stay has not ended, anonymizes the retained author name, archives published posts, makes public itineraries private, revokes credentials and clears cookies after commit. Added service, HTTP, Swagger and authentication regression coverage. All 148 unit/API tests and the production build passed.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-07a, ACC-09, ACC-11, ACC-12
+PROMPT: Use the @CurrentUser() decorator. UserRole.USER means registered user; guests access routes through the @Public() decorator only.
+RESPONSE: Confirmed all four account handlers already receive the authenticated identity through @CurrentUser() on controller parameters and pass it to their services. Documented that UserRole.USER is a registered user and guests have no role. Extended HTTP coverage to check that every authenticated role can read/edit its own profile, both moderator roles cannot self-deactivate or reset passwords, and unauthenticated requests are rejected by all four private endpoints.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-09, ACC-11, ACC-12 (user-specified access restriction)
+PROMPT: all the Me api should not be called by anyone not registered or not the current user
+RESPONSE: Restricted all /users/me operations and GET /auth/me to UserRole.USER using @Roles, with matching service checks. Kept identity sourced from @CurrentUser() exclusively. Updated role and ownership tests to cover guests, unknown accounts, staff roles, registered users, forged identity fields and attempts to address another account. This follows the user's explicit restriction over the CSV's broader authenticated-role profile access.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-09, ACC-11, ACC-12
+PROMPT: what if a moderator want to get his profile
+RESPONSE: Clarified that profile access is based on the signed-in identity rather than the customer role. Removed UserRole.USER restrictions from GET /users/me, PATCH /users/me and GET /auth/me, including corresponding service checks. Authentication remains required and @CurrentUser() remains the only source of the account id. Kept UserRole.USER on self-deactivation as required by ACC-12. Updated service and HTTP tests to allow moderators and admins to read/edit their own profile while continuing to reject guests, unknown accounts and supplied target identities.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: ACC-01, ACC-02, ACC-07, ACC-07a, ACC-09, ACC-11, ACC-12, ACC-19, GEN-01-B, GEN-07
+PROMPT: add multiple commits for change made
+RESPONSE: Reviewed the pending changes and organized them into separate conventional commits for authentication/email recovery, admin password resets, self-service profiles and deactivation, Swagger display, and the AI prompt log. Kept the current feature branch and excluded local environment secrets and generated files.
+
+
+STUDENT: Not specified
+DATE: 2026-11-20
+AGENT: Codex
+REQUIREMENTS: HTL-01, FLT-01, GEN-07, GEN-08, GEN-13
+PROMPT: add those and commit. The attached endpoint table identifies POST /api/hotels, PATCH /api/hotels/:id, POST /api/airlines, GET /api/airlines/:id and PATCH /api/airlines/:id.
+RESPONSE: Added hotel and airline feature modules with validated profile DTOs, Swagger documentation and current-user identity. Creation is admin-only and uses an existing matching moderator, with unique provider assignment enforced by the database; edits require the assigned moderator of the matching type. Public airline reads return only active profiles and omit moderator/private configuration. Hotel locations are checked against city/country reference data; hotel photos and amenities enforce schema limits. Aligned hotel logo/checking-policy requirements and default airline bag policy with independent profile creation, and extended transactional admin audit logs for provider creation. Added service, HTTP and real-schema regression coverage. All 271 tests, the production build and focused lint passed before committing.

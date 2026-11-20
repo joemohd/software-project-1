@@ -9,6 +9,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RolesGuard } from './guards/roles.guard.js';
+import { MailService } from './mail.service.js';
 import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema.js';
 
 @Module({
@@ -30,11 +31,12 @@ import { RefreshToken, RefreshTokenSchema } from './schemas/refresh-token.schema
   ],
   providers: [
     AuthService,
+    MailService,
     // Global guards run in registration order: authenticate first, then check roles.
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
   controllers: [AuthController],
-  exports: [JwtModule],
+  exports: [JwtModule, MongooseModule, ConfigModule],
 })
 export class AuthModule {}

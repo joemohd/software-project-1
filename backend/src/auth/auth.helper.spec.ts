@@ -19,6 +19,9 @@ import {
   MESSAGES,
   normalizeEmail,
   passwordMatches,
+  escapeHtml,
+  passwordResetEmail,
+  verificationEmail,
   toProfile,
 } from './auth.helper.js';
 import type { UserRecord } from './auth.types.js';
@@ -146,5 +149,25 @@ describe('auth.helper', () => {
       expect(error.message).toBe('Too many failed login attempts. Try again in 2 minutes.');
       expect(lockedException(60_000).message).toBe('Too many failed login attempts. Try again in 1 minute.');
     });
+  });
+});
+
+describe('auth.helper emails (GEN-01-B)', () => {
+  it('escapes HTML in user-provided text', () => {
+    expect(escapeHtml('<b>"Mo" & \'Al\'</b>')).toBe('&lt;b&gt;&quot;Mo&quot; &amp; &#39;Al&#39;&lt;/b&gt;');
+  });
+
+  it('builds the verification email with the link in both text and HTML', () => {
+    const email = verificationEmail('mona@example.com', 'Mona', 'http://app/verify-email?token=abc');
+    expect(email.to).toBe('mona@example.com');
+    expect(email.subject).toBe('Verify your email address');
+    expect(email.text).toContain('http://app/verify-email?token=abc');
+    expect(email.html).toContain('href="http://app/verify-email?token=abc"');
+  });
+
+  it('does not let a name inject HTML into the email', () => {
+    const email = passwordResetEmail('x@y.co', '<script>alert(1)</script>', 'http://app/reset-password?token=t');
+    expect(email.html).not.toContain('<script>');
+    expect(email.html).toContain('&lt;script&gt;');
   });
 });

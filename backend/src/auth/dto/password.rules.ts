@@ -1,4 +1,5 @@
 import { applyDecorators } from '@nestjs/common';
+import { ApiProperty } from '@nestjs/swagger';
 import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 /**
@@ -8,6 +9,11 @@ import { IsString, Matches, MaxLength, MinLength } from 'class-validator';
  */
 export const IsStrongPassword = () =>
   applyDecorators(
+    ApiProperty({
+      description: 'At least 8 characters, including at least one letter and one digit',
+      minLength: 8,
+      maxLength: 72,
+    }),
     IsString(),
     MinLength(8),
     MaxLength(72),
