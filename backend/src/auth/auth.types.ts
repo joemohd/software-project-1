@@ -17,6 +17,7 @@ export interface JwtPayload {
   sub: string; // user id
   role: UserRole;
   type: 'access';
+  sessionVersion?: number;
 }
 
 /** Claims carried inside an email-verification token (ACC-02). */
@@ -41,6 +42,14 @@ export interface IssuedTokens {
   accessTokenMaxAgeSeconds: number;
   refreshToken: string;
   refreshTokenMaxAgeSeconds: number;
+}
+
+/** An email ready to send (GEN-01-B). */
+export interface MailMessage {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
 }
 
 /** Result of a successful login or refresh. */
