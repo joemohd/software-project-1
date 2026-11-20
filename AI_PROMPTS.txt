@@ -369,6 +369,23 @@ Reviewed and committed the merge. package.json has luxon and cookie-parser once 
 
 ================================================
 Date: 2026-11-20
+Student: Ahmed Mohamed Ali
+Tool: Claude (claude.ai, working directly in the repo through the desktop app)
+Related Requirement: ITN-01, ITN-03, ITN-05, ITN-07, ITN-08, ITN-09, ITN-10, ITN-12, ITN-14, ITN-16, ITN-18, ITN-20, ITN-21, ITN-25, ITN-26
+Prompt:
+Implement the Itineraries API (section 8.8 mandatory endpoints) on feature/ITN-01-itineraries-api, following backend/AGENTS.md, docs/craft/itineraries.md and docs/requirements/itineraries.md. Reuse the global JwtAuthGuard/RolesGuard, @CurrentUser, @Public, the shared UploadService (GEN-08) and the seeded countries/cities/currencies. Only touch the itineraries module (plus its schema and app.module.ts). Ownership on every private route (404 for other users), max 60 days, dates derived from the start date, renumbering on delete/reorder, city groups, budget summary by category/day/group, FXRatesAPI rates cached once per day with fallback to the last cached rates, public search and clone with attribution, hotel/flight search criteria from the itinerary. Swagger on every endpoint. Don't push.
+How the output was used:
+Claude wrote the itineraries module directly in my repository on feature/ITN-01-itineraries-api. I reviewed the design decisions it reported (embedding days/activities/budgets/transport in the itinerary instead of the shared expenses collection, and ITN-25/26 returning the hotel/flight search criteria because HTL-11 and FLT-11/12 are not on dev yet) and kept them. The new unit tests were run on my machine: 9/9 passed (itinerary-rules.spec.ts and exchange-rate.service.spec.ts), and the TypeScript check showed no errors in src/itineraries (the remaining errors are in other modules and already exist on dev). The work was committed locally as 611fd2a. An end-to-end run through Swagger against the database is still pending because my backend/.env was not set up yet.
+Notes from the assistant: days, activities, budget entries and transport costs are embedded in the itinerary document (bounded, parent-owned data) instead of using the shared expenses collection, because the Expense/Activity/Transport schemas have no currency field and Activity requires a category id, which ITN-14/16/18 don't fit. The shared expense.schema.ts was not changed. ITN-25/26 return the derived search criteria and the ready-to-run /api/hotels/search and /api/flights/search requests, since HTL-11 and FLT-11/12 are not implemented on dev yet.
+
+Date: 2026-11-20
+Student: Ahmed Mohamed Ali
+Tool: Claude (claude.ai, working directly in the repo through the desktop app)
+Related Requirement: ITN-27, ITN-28 (optional), ITN-01, ITN-12 (fix)
+Prompt:
+Implement the itinerary endpoints from the API table that are still missing (POST /api/itineraries/:id/bookings for ITN-27 and GET /api/itineraries/:id/pdf for ITN-28) and double-check the activity image endpoints. Test everything end to end before committing.
+How the output was used:
+Claude added ITN-27 (link my own Confirmed/Completed flight and hotel bookings to itinerary days, plus an unlink route; linked bookings appear on the day and in the budget summary in the platform currency, unconverted per PAY-04, and are hidden from the public view and not copied by clones) and ITN-28 (PDF export with pdfkit, added as a backend dependency). I kept both designs. Before that, an end-to-end run against a throwaway local MongoDB found a bug where deleting an itinerary always returned 404; it was fixed and committed. Unit tests: 12/12 passed. End-to-end run: 52/52 checks passed, including linking, duplicate/pending/other-user booking rejections, budget totals with bookings, the PDF download, and another user being refused the PDF. I reviewed the generated PDF. A real Cloudinary image upload is still untested because no Cloudinary key is configured locally.
 Student: Mahmoud
 Tool: Claude Code
 Related Requirement: None (developer documentation and branch update)
@@ -478,7 +495,6 @@ Prompt:
 Small follow-up PR: from the latest dev, branch fix/FLT-09-swagger-dto-name, rename my CancellationTierDto to AirlineCancellationTierDto (only my file and its usages), build/test/lint, commit "fix(flights): rename CancellationTierDto to avoid Swagger schema clash with hotels (FLT-09)", push and open a PR into dev.
 How the output was used:
 A boot check of merged dev found that src/flights/dto/update-cancellation-policy.dto.ts and src/hotels/dto/update-hotel-policies.dto.ts both declared a class named CancellationTierDto. Swagger keys schemas by class name, so /api/docs showed the airline tier shape (daysBeforeDeparture) for PUT /api/hotels/{id}/policies instead of daysBeforeCheckIn. Renamed only the flights class and its uses in src/flights (2 files); hotels is unchanged. Validation and the API body are unchanged; only the Swagger schema name differs. Tests 514/514 and lint passed; npm run build still shows only the 20 type errors in auth, hotels and users that exist on dev.
-================================================
 
 STUDENT: Youssef Mohamed
 DATE: 2026-11-20
@@ -537,7 +553,6 @@ Once created, the two segments are managed together (or individually for flight 
   - Re-validates same route, same airline, same cabin, baggage limits, and re-runs `assertReturnTrip` against the unchanged segment so the return still departs after the outbound lands.
   - When changing the outbound leg (`segmentIndex === 0`), it also verifies that the new departure date does not change any passenger's age category (`adult`/`child`/`infant`).
 
-================================================
 
 STUDENT: Youssef Mohamed
 DATE: 2026-11-20
@@ -559,7 +574,6 @@ Flight Changes (FLT-27)	changeFlight can swap segmentIndex 0 or 1 independently 
 
 Recommendation: You can safely remove roundTripFlightId (and its pre('validate') check) from flight.schema.ts unless you specifically plan to add a "featured/suggested return flight" feature later. Keeping an unused field on Flight only creates confusion about where round-trip pairing lives.
 
-================================================
 
 STUDENT: Youssef Mohamed
 DATE: 2026-11-20
@@ -573,7 +587,6 @@ PROMPT: Let's remove it.
 
 RESPONSE: Removed roundTripFlightId and its validation check from flight.schema.ts. The backend build and test suite are currently running; waiting for the results.
 
-================================================
 
 
 STUDENT: Youssef Mohamed
