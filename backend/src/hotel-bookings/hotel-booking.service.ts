@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { DateTime } from 'luxon';
-import { Connection, Model, Types } from 'mongoose';
+import { type Connection, type Model, Types } from 'mongoose';
 import { City } from '../database/schemas/city.schema.js';
 import { BookingStatus, HotelBooking, PaymentIntentStatus } from '../database/schemas/expense.schema.js';
 import { Hotel, ProviderStatus, Room, RoomStatus, RoomType } from '../database/schemas/provider.schema.js';

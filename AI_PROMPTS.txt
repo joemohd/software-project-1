@@ -591,8 +591,7 @@ PROMPT: We need to implement the following API endpoints:
 |`GET`|`/api/flights/search`|`FLT-11`, `FLT-12`, `FLT-15`|
 |`GET`|`/api/itineraries/:id/flights`|`ITN-26`|
 
-How should we do them in a high quality?
-Good, now do these. If you ever need help, refer to project description (md) and functional requirements (csv)
+How should we do them in a high quality? If you ever need help, refer to project description (md) and functional requirements (csv)
 
 ------------------------------------------------
 
