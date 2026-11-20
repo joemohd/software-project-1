@@ -264,6 +264,62 @@ export class RoomBooking {
     guestAges: number[];
 }
 
+// HTL-26: a hotel moderator's reply to a review.
+@Schema({ _id: false })
+export class ReviewReply {
+    @Prop({
+        type: String,
+        required: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 1000
+    })
+    text: string;
+
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: User.name,
+        required: true
+    })
+    moderatorId: Types.ObjectId;
+
+    @Prop({
+        type: Date,
+        required: true
+    })
+    repliedAt: Date;
+}
+
+// HTL-23 / HTL-24: the single review a user may leave for a Completed hotel
+// reservation. Stored as a sub-document on its HotelBooking (one review per
+// reservation). It carries its own _id so it can be addressed via /reviews/:id.
+@Schema({ _id: true, timestamps: true })
+export class HotelReview {
+    @Prop({
+        type: Number,
+        required: true,
+        min: 1,
+        max: 5,
+        validate: Number.isInteger
+    })
+    rating: number;
+
+    @Prop({
+        type: String,
+        trim: true,
+        maxlength: 1000,
+        default: ''
+    })
+    comment: string;
+
+    @Prop({
+        type: ReviewReply,
+        default: null
+    })
+    reply: ReviewReply | null;
+}
+
 @Schema({
     timestamps: true,
     strict: 'throw',
@@ -299,6 +355,13 @@ export class HotelBooking extends Booking {
         }
     })
     rooms: RoomBooking[];
+
+    // HTL-23: the user's review for this reservation (null until reviewed).
+    @Prop({
+        type: HotelReview,
+        default: null
+    })
+    review: HotelReview | null;
 }
 
 export enum PassengerType {
@@ -585,6 +648,8 @@ export const TransportSchema = SchemaFactory.createForClass(Transport);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 export const RefundSchema = SchemaFactory.createForClass(Refund);
 export const HotelBookingSchema = SchemaFactory.createForClass(HotelBooking);
+export const HotelReviewSchema = SchemaFactory.createForClass(HotelReview);
+export const ReviewReplySchema = SchemaFactory.createForClass(ReviewReply);
 export const FlightBookingSchema = SchemaFactory.createForClass(FlightBooking);
 export const BookingRoomSchema = SchemaFactory.createForClass(RoomBooking);
 export const FlightPassengerSchema = SchemaFactory.createForClass(FlightPassenger);

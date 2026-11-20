@@ -18,6 +18,10 @@ import { UpdateAvailabilityDto } from './dto/update-availability.dto.js';
 import { UpdateHotelDto } from './dto/update-hotel.dto.js';
 import { UpdateHotelPoliciesDto } from './dto/update-hotel-policies.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
+import { SearchHotelsDto } from './dto/search-hotels.dto.js';
+import { AvailableRoomsQueryDto } from './dto/available-rooms-query.dto.js';
+import { ListReservationsDto } from './dto/list-reservations.dto.js';
+import { ListHotelReviewsDto } from './dto/list-hotel-reviews.dto.js';
 
 type DateRange = { startDate: Date; endDate: Date };
 type RoomRecord = Room & { _id: Types.ObjectId };
@@ -151,6 +155,170 @@ export class HotelsService {
     hotel.checkingPolicy = { checkInTime, checkOutTime }; hotel.cancellationPolicies = tiers.map((tier, index) => ({ daysBeforeService: { startDay: tier.daysBeforeCheckIn, endDay: tiers[index + 1]?.daysBeforeCheckIn ?? null }, refundPercentage: tier.refundPercentage }));
     await hotel.save(); return this.hotelPolicyResponse(hotel);
   }
+
+  // ---- HTL-11 / HTL-12: search hotels -------------------------------------
+
+  async searchHotels(dto: SearchHotelsDto) {
+    const stay = this.parseRange({ startDate: dto.checkIn, endDate: dto.checkOut });
+    if (stay.startDate < this.todayUtcMidnight()) throw new BadRequestException('checkIn cannot be in the past.');
+
+    const cityIds = await this.resolveCityIds(dto.city, dto.country);
+    if (cityIds !== null && cityIds.length === 0) return this.paginate([], dto.page, dto.limit);
+
+    const hotelFilter = { status: ProviderStatus.ACTIVE, ...(cityIds === null ? {} : { cityId: { $in: cityIds } }) };
+    const hotels = await this.hotelModel.find(hotelFilter).exec();
+    if (!hotels.length) return this.paginate([], dto.page, dto.limit);
+
+    const rooms = await this.roomModel.find({ hotelId: { $in: hotels.map((hotel) => hotel._id) }, status: RoomStatus.ACTIVE }).exec();
+    const bookings = await this.protectedBookingsForRooms(rooms.map((room) => room._id));
+
+    const freeByHotel = new Map<string, RoomRecord[]>();
+    for (const room of rooms) {
+      if (!this.isBookable(room, stay, bookings)) continue;
+      const key = room.hotelId.toString();
+      const list = freeByHotel.get(key) ?? [];
+      list.push(room);
+      freeByHotel.set(key, list);
+    }
+
+    const { cityNames, countryNames } = await this.locationNames(hotels);
+    const nights = this.nightsBetween(stay);
+
+    const results = [];
+    for (const hotel of hotels) {
+      const free = freeByHotel.get(hotel._id.toString()) ?? [];
+      if (free.length < dto.rooms) continue;
+      const topOccupancy = [...free].sort((a, b) => b.maxOccupancy - a.maxOccupancy).slice(0, dto.rooms).reduce((sum, room) => sum + room.maxOccupancy, 0);
+      if (topOccupancy < dto.guests) continue;
+      const cheapest = Math.min(...free.map((room) => room.pricePerNight));
+      if (dto.minPrice !== undefined && cheapest < dto.minPrice) continue;
+      if (dto.maxPrice !== undefined && cheapest > dto.maxPrice) continue;
+      if (dto.minRating !== undefined && hotel.averageRating < dto.minRating) continue;
+      results.push({
+        id: hotel._id.toString(), name: hotel.name, cityId: hotel.cityId.toString(),
+        city: cityNames.get(hotel.cityId.toString()) ?? null, country: countryNames.get(hotel.cityId.toString()) ?? null,
+        starClass: hotel.starClass, averageRating: hotel.averageRating, imageUrls: hotel.imageUrls ?? [],
+        cheapestRoomPrice: cheapest, totalStayPrice: cheapest * nights, freeRoomsCount: free.length, nights,
+      });
+    }
+
+    const direction = dto.sortOrder === 'desc' ? -1 : 1;
+    if (dto.sortBy === 'price') results.sort((a, b) => (a.cheapestRoomPrice - b.cheapestRoomPrice) * direction);
+    else if (dto.sortBy === 'rating') results.sort((a, b) => (a.averageRating - b.averageRating) * direction);
+
+    return this.paginate(results, dto.page, dto.limit);
+  }
+
+  // ---- HTL-15: available rooms for a hotel --------------------------------
+
+  async availableRooms(hotelId: string, dto: AvailableRoomsQueryDto) {
+    const hotel = await this.findHotelOrThrow(hotelId);
+    const stay = this.parseRange({ startDate: dto.checkIn, endDate: dto.checkOut });
+    if (stay.startDate < this.todayUtcMidnight()) throw new BadRequestException('checkIn cannot be in the past.');
+    const nights = this.nightsBetween(stay);
+
+    // Deactivated hotels cannot be booked (ACC-15) — no rooms are offered.
+    if (hotel.status !== ProviderStatus.ACTIVE) {
+      return { hotelId: hotel._id.toString(), checkIn: stay.startDate, checkOut: stay.endDate, nights, rooms: [] };
+    }
+
+    const rooms = await this.roomModel.find({ hotelId: hotel._id, status: RoomStatus.ACTIVE }).exec();
+    const bookings = await this.protectedBookingsForRooms(rooms.map((room) => room._id));
+    const roomTypes = await this.roomTypesForHotel(hotel._id);
+
+    const available = rooms
+      .filter((room) => this.isBookable(room, stay, bookings))
+      .filter((room) => (dto.guests ? room.maxOccupancy >= dto.guests : true))
+      .map((room) => ({ ...this.roomResponse(room, roomTypes.get(room.roomTypeId.toString()) ?? null), totalStayPrice: room.pricePerNight * nights }));
+
+    return { hotelId: hotel._id.toString(), checkIn: stay.startDate, checkOut: stay.endDate, nights, rooms: available };
+  }
+
+  // ---- HTL-22: hotel moderator views their reservations -------------------
+
+  async reservationsForHotel(hotelId: string, user: AuthenticatedUser, dto: ListReservationsDto) {
+    const hotel = await this.findHotelOrThrow(hotelId);
+    if (hotel.moderatorId.toString() !== user.id) throw new ForbiddenException('You can only view reservations for your own hotel.');
+
+    const roomIds = await this.roomModel.find({ hotelId: hotel._id }).distinct('_id').exec();
+    const filter = { 'rooms.roomId': { $in: roomIds }, ...(dto.status ? { status: dto.status } : {}) };
+
+    const [docs, total] = await Promise.all([
+      this.hotelBookingModel.find(filter).sort({ startDate: 1 }).skip((dto.page - 1) * dto.limit).limit(dto.limit).populate('userId', 'email firstName lastName name').lean().exec(),
+      this.hotelBookingModel.countDocuments(filter).exec(),
+    ]);
+
+    const items = (docs as Array<Record<string, any>>).map((booking) => ({
+      id: booking._id.toString(),
+      guest: booking.userId ?? null,
+      rooms: booking.rooms.map((room: { roomId: Types.ObjectId; guestAges: number[] }) => ({ roomId: room.roomId.toString(), guests: room.guestAges.length })),
+      checkIn: booking.startDate,
+      checkOut: this.addNights(booking.startDate, booking.nightsCount),
+      nights: booking.nightsCount,
+      status: booking.status,
+      total: booking.cost ?? null,
+    }));
+    return { page: dto.page, limit: dto.limit, total, totalPages: Math.ceil(total / dto.limit), items };
+  }
+
+  // ---- HTL-24: a hotel's reviews (public) ---------------------------------
+
+  async listHotelReviews(hotelId: string, dto: ListHotelReviewsDto) {
+    const hotel = await this.findHotelOrThrow(hotelId);
+    const roomIds = await this.roomModel.find({ hotelId: hotel._id }).distinct('_id').exec();
+    const filter = { 'rooms.roomId': { $in: roomIds }, review: { $ne: null } };
+
+    const [docs, total] = await Promise.all([
+      this.hotelBookingModel.find(filter).sort({ 'review.createdAt': -1 }).skip((dto.page - 1) * dto.limit).limit(dto.limit).populate('userId', 'firstName lastName name').lean().exec(),
+      this.hotelBookingModel.countDocuments(filter).exec(),
+    ]);
+
+    const items = (docs as Array<Record<string, any>>).map((booking) => {
+      const review = booking.review;
+      return {
+        id: review._id?.toString() ?? null,
+        rating: review.rating,
+        comment: review.comment,
+        reply: review.reply ? { text: review.reply.text, repliedAt: review.reply.repliedAt } : null,
+        createdAt: review.createdAt ?? null,
+        user: booking.userId ?? null,
+      };
+    });
+    return { averageRating: hotel.averageRating, ratingsCount: total, page: dto.page, limit: dto.limit, total, totalPages: Math.ceil(total / dto.limit), items };
+  }
+
+  private async resolveCityIds(cityName?: string, countryName?: string): Promise<Types.ObjectId[] | null> {
+    if (!cityName && !countryName) return null;
+    const nameFilter = cityName ? { name: { $regex: `^${this.escapeRegex(cityName)}$`, $options: 'i' } } : {};
+    let countryFilter: Record<string, unknown> = {};
+    if (countryName) {
+      const countries = await this.countryModel.find({ name: { $regex: `^${this.escapeRegex(countryName)}$`, $options: 'i' } }).select('_id').lean<Array<{ _id: Types.ObjectId }>>().exec();
+      countryFilter = { countryId: { $in: countries.map((country) => country._id) } };
+    }
+    const cities = await this.cityModel.find({ ...nameFilter, ...countryFilter }).select('_id').lean<Array<{ _id: Types.ObjectId }>>().exec();
+    return cities.map((city) => city._id);
+  }
+
+  private async locationNames(hotels: Array<Hotel & { _id: Types.ObjectId }>) {
+    const cityIds = [...new Set(hotels.map((hotel) => hotel.cityId.toString()))];
+    const cities = await this.cityModel.find({ _id: { $in: cityIds.map((id) => new Types.ObjectId(id)) } }).lean<Array<{ _id: Types.ObjectId; name: string; countryId: Types.ObjectId }>>().exec();
+    const countryIds = [...new Set(cities.map((city) => city.countryId.toString()))];
+    const countries = await this.countryModel.find({ _id: { $in: countryIds.map((id) => new Types.ObjectId(id)) } }).lean<Array<{ _id: Types.ObjectId; name: string }>>().exec();
+    const countryName = new Map(countries.map((country) => [country._id.toString(), country.name]));
+    const cityNames = new Map<string, string>();
+    const countryNames = new Map<string, string>();
+    for (const city of cities) {
+      cityNames.set(city._id.toString(), city.name);
+      countryNames.set(city._id.toString(), countryName.get(city.countryId.toString()) ?? '');
+    }
+    return { cityNames, countryNames };
+  }
+
+  private nightsBetween(range: DateRange): number { return Math.round((range.endDate.getTime() - range.startDate.getTime()) / 86400000); }
+  private addNights(start: Date, nights: number): Date { const date = new Date(start); date.setUTCHours(0, 0, 0, 0); date.setUTCDate(date.getUTCDate() + nights); return date; }
+  private todayUtcMidnight(): Date { const now = new Date(); return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())); }
+  private paginate<T>(items: T[], page: number, limit: number) { const total = items.length; const start = (page - 1) * limit; return { page, limit, total, totalPages: Math.ceil(total / limit), items: items.slice(start, start + limit) }; }
+  private escapeRegex(input: string): string { return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
   private async countryForCity(cityId: string, expectedCountryId?: string, session: import('mongoose').ClientSession | null = null): Promise<string> {
     const city = await this.cityModel.findById(cityId).session(session).lean<{ countryId: Types.ObjectId }>().exec();

@@ -11,6 +11,7 @@ import { BlogModule } from './blog/blog.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { UsersModule } from './users/users.module.js';
 import { HotelsModule } from './hotels/hotels.module.js';
+import { HotelBookingsModule } from './hotel-bookings/hotel-bookings.module.js';
 import { AirlinesModule } from './airlines/airlines.module.js';
 
 @Module({
@@ -24,6 +25,7 @@ import { AirlinesModule } from './airlines/airlines.module.js';
     AdminModule,
     UsersModule,
     HotelsModule,
+    HotelBookingsModule,
     AirlinesModule,
   ],
   controllers: [AppController],
