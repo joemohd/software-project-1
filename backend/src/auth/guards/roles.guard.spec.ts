@@ -32,8 +32,13 @@ describe('RolesGuard', () => {
   });
 
   it('allows a user whose role is listed', () => {
-    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.ADMIN, UserRole.MODERATOR]);
-    expect(guard.canActivate(contextFor(userWithRole(UserRole.MODERATOR)))).toBe(true);
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.ADMIN, UserRole.HOTEL_MODERATOR]);
+    expect(guard.canActivate(contextFor(userWithRole(UserRole.HOTEL_MODERATOR)))).toBe(true);
+  });
+
+  it('keeps hotel and airline moderators apart', () => {
+    vi.spyOn(reflector, 'getAllAndOverride').mockReturnValue([UserRole.HOTEL_MODERATOR]);
+    expect(() => guard.canActivate(contextFor(userWithRole(UserRole.AIRLINE_MODERATOR)))).toThrow(ForbiddenException);
   });
 
   it('rejects a user whose role is not listed', () => {

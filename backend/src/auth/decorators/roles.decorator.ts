@@ -9,6 +9,6 @@ export const ROLES_KEY = 'roles';
  * Routes without @Roles() are open to any authenticated user.
  *
  * @example @Roles(UserRole.ADMIN)
- * @example @Roles(UserRole.ADMIN, UserRole.MODERATOR)
+ * @example @Roles(UserRole.ADMIN, UserRole.HOTEL_MODERATOR)
  */
 export const Roles = (...roles: [UserRole, ...UserRole[]]) => SetMetadata(ROLES_KEY, roles);

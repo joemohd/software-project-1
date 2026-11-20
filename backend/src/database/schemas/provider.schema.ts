@@ -164,7 +164,7 @@ export class Provider {
 
     @Prop({
         type: String,
-        required: true,
+        required: function (this: Provider) { return this.providerType === 'airline'; },
         validate: [{
             validator: (value: string) => {
                 if (!value) return true;
@@ -212,7 +212,8 @@ export class Airline extends Provider {
 
     @Prop({
         type: BagPolicy,
-        required: true
+        required: true,
+        default: () => ({ priceExtraBag: 0, maxExtraBagCount: 0 })
     })
     bagPolicy: BagPolicy;
 }
@@ -309,10 +310,9 @@ export class Hotel extends Provider {
     amenities: string[];
 
     @Prop({
-        type: CheckingPolicies,
-        required: true
+        type: CheckingPolicies
     })
-    checkingPolicy: CheckingPolicies;
+    checkingPolicy?: CheckingPolicies; // HTL-09: configured separately after profile creation.
 }
 
 @Schema({

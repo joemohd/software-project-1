@@ -10,11 +10,18 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model, Types } from 'mongoose';
 import { User, UserActivityStatus, UserRole } from '../../database/schemas/user.schema.js';
-import { ACCESS_TOKEN_COOKIE, blockedStatusMessage, isBlocked } from '../auth.helper.js';
+import { ACCESS_TOKEN_COOKIE, blockedStatusMessage, isBlocked, MESSAGES } from '../auth.helper.js';
 import type { AuthenticatedRequest, JwtPayload } from '../auth.types.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 
-type UserAuthFields = { _id: Types.ObjectId; role: UserRole; status: UserActivityStatus; isVerified: boolean };
+type UserAuthFields = {
+  _id: Types.ObjectId;
+  role: UserRole;
+  status: UserActivityStatus;
+  isVerified: boolean;
+  mustChangePassword?: boolean;
+  sessionVersion?: number;
+};
 
 /**
  * Authenticates every request using the httpOnly access-token cookie (ACC-19), unless the route is marked @Public().
@@ -55,12 +62,18 @@ export class JwtAuthGuard implements CanActivate {
 
     const user = await this.userModel
       .findById(payload.sub)
-      .select('role status isVerified')
+      .select('role status isVerified mustChangePassword sessionVersion')
       .lean<UserAuthFields>()
       .exec();
 
     if (!user) throw new UnauthorizedException('Account no longer exists.');
     if (isBlocked(user.status)) throw new ForbiddenException(blockedStatusMessage(user.status));
+    if ((payload.sessionVersion ?? 0) !== (user.sessionVersion ?? 0)) {
+      throw new UnauthorizedException(MESSAGES.sessionExpired);
+    }
+    if (user.mustChangePassword) {
+      throw new ForbiddenException({ message: MESSAGES.passwordChangeRequired, mustChangePassword: true });
+    }
 
     request.user = {
       id: user._id.toString(),

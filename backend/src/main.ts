@@ -35,7 +35,13 @@ async function bootstrap() {
         .addCookieAuth(ACCESS_TOKEN_COOKIE)
         .build();
     SwaggerModule.setup('api/docs', app, () => SwaggerModule.createDocument(app, swaggerConfig), {
-        swaggerOptions: { withCredentials: true, persistAuthorization: true }
+        swaggerOptions: { withCredentials: true, persistAuthorization: true },
+        // Hide the documented "Responses" table (Code / Description / Links) under each endpoint;
+        // the real server response shown after "Execute" stays visible
+        customCss: `
+            .swagger-ui .responses-inner > table.responses-table { display: none; }
+            .swagger-ui .responses-inner > div > h4 { display: none; }
+        `
     });
 
     await app.listen(process.env.PORT ?? 3000);
