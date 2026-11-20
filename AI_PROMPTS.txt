@@ -465,3 +465,14 @@ Check these endpoints against the code and commit, with an AI_PROMPTS.txt entry 
 How the output was used:
 All PAY-01/02/03 and FLT-22/23/26 routes exist. Not implemented: PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional) and POST /api/hotel-bookings (HTL-16, HTL-18). Tests 529/529 passed (one run had a flaky failure that passed on rerun) and lint passed with one warning. npm run build still fails with 20 type errors, all in src/auth, src/hotels and src/users, none in the payments or flight-bookings code. Committed; .vscode/ was left out.
 ================================================
+
+================================================
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: HTL-16, HTL-18
+Prompt:
+Implement POST /api/hotel-bookings (HTL-16, HTL-18). Only this endpoint: the hotel reservation list, details and cancel routes are not my part. Name it hotel booking, not reservation. Ask before doing anything else, and show me the commit before publishing.
+How the output was used:
+Added src/hotel-booking, which has only the create route, so it doesn't touch the hotel-bookings module on the teammate's branch. Rooms must be in the same hotel and active, each room gets adults and children (0-17), there must be at least one adult and no room over its max occupancy, and dates are checked (check-out after check-in, check-in not in the past at the hotel's local date). All rooms are held for 10 minutes in one MongoDB transaction; any overlap with a Confirmed reservation, an unexpired hold or a blocked range rejects the whole request. Adults are stored as age 18 in guestAges so the teammate's guest counts still work. Added holdExpiresAt to HotelBooking and pricePerNight to RoomBooking. Expired holds are swept every minute. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
+================================================

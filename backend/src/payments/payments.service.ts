@@ -271,7 +271,7 @@ export class PaymentsService {
           status: BookingStatus.PENDING_PAYMENT,
           $or: [{ holdExpiresAt: { $exists: false } }, { holdExpiresAt: null }, { holdExpiresAt: { $gt: new Date() } }],
         },
-        { $set: { status: BookingStatus.CONFIRMED } },
+        { $set: { status: BookingStatus.CONFIRMED, holdExpiresAt: null } },
       )
       .exec();
     return result.modifiedCount === 1;

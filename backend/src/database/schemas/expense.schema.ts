@@ -250,6 +250,15 @@ export class RoomBooking {
     })
     roomId: Types.ObjectId;
 
+    // HTL-16: integer cents, the room's price per night at booking time
+    @Prop({
+        type: Number,
+        min: 0,
+        validate: Number.isSafeInteger
+    })
+    pricePerNight: number;
+
+    // HTL-16: one age per guest; adults are stored as 18 (ADULT_AGE) because only children's ages (0-17) are asked for
     @Prop({
         type: [Number],
         required: true,
@@ -284,6 +293,10 @@ export class HotelBooking extends Booking {
         validate: Number.isInteger
     })
     nightsCount: number;
+
+    // HTL-18: the rooms are held until this time while the user pays; null once Confirmed
+    @Prop({ type: Date, default: null })
+    holdExpiresAt: Date | null;
 
     @Prop({
         type: [RoomBooking],
@@ -603,3 +616,7 @@ ActivityCategorySchema.index(
     { userId: 1, name: 1 },
     { unique: true }
 );
+
+// HTL-18: finding a room's overlapping reservations, and expiring overdue holds
+HotelBookingSchema.index({ 'rooms.roomId': 1, status: 1 });
+HotelBookingSchema.index({ status: 1, holdExpiresAt: 1 });

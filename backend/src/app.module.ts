@@ -13,6 +13,7 @@ import { UsersModule } from './users/users.module.js';
 import { HotelsModule } from './hotels/hotels.module.js';
 import { AirlinesModule } from './airlines/airlines.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
+import { HotelBookingModule } from './hotel-booking/hotel-booking.module.js';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { PaymentsModule } from './payments/payments.module.js';
     HotelsModule,
     AirlinesModule,
     PaymentsModule,
+    HotelBookingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
