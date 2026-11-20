@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { City } from './city.schema.js';
 import { User } from './user.schema.js';
 
 export enum ItineraryVisibility {
@@ -9,6 +10,20 @@ export enum ItineraryVisibility {
 
 @Schema({ _id: false })
 export class ItineraryDay {
+    // ITN-05, ITN-09, ITN-26: each day has a city from the predefined city list
+    @Prop({
+        type: Types.ObjectId,
+        ref: City.name
+    })
+    cityId?: Types.ObjectId;
+
+    @Prop({
+        type: String,
+        trim: true,
+        maxlength: 2000
+    })
+    notes?: string;
+
     // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: [Types.ObjectId],
@@ -69,6 +84,13 @@ export class Itinerary {
         }
     })
     days: ItineraryDay[];
+
+    // GEN-10: hidden itineraries stay visible only to their author and admins
+    @Prop({
+        type: Boolean,
+        default: false
+    })
+    isHidden?: boolean;
 }
 
 @Schema({

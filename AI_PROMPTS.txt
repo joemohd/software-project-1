@@ -479,3 +479,127 @@ Small follow-up PR: from the latest dev, branch fix/FLT-09-swagger-dto-name, ren
 How the output was used:
 A boot check of merged dev found that src/flights/dto/update-cancellation-policy.dto.ts and src/hotels/dto/update-hotel-policies.dto.ts both declared a class named CancellationTierDto. Swagger keys schemas by class name, so /api/docs showed the airline tier shape (daysBeforeDeparture) for PUT /api/hotels/{id}/policies instead of daysBeforeCheckIn. Renamed only the flights class and its uses in src/flights (2 files); hotels is unchanged. Validation and the API body are unchanged; only the Swagger schema name differs. Tests 514/514 and lint passed; npm run build still shows only the 20 type errors in auth, hotels and users that exist on dev.
 ================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: I want you to walk me through how round-trip flights are implemented.
+
+------------------------------------------------
+
+RESPONSE: Round-trip flights are modeled as a single `FlightBooking` containing two `FlightSegment` entries (`segments[0]` for outbound, `segments[1]` for return), rather than linking two separate bookings.
+
+> [!NOTE]
+> The `Flight` schema defines an optional `roundTripFlightId` field with a self-reference check in [flight.schema.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/database/schemas/flight.schema.ts#L188-L228), but the booking flow does not use it—round trips are paired dynamically at booking time.
+
+---
+
+### 1. Data Model & Request DTO
+- **Database schema** ([expense.schema.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/database/schemas/expense.schema.ts#L416-L563)): `FlightBooking.segments` is an array of `FlightSegment` subdocuments validated to have `1` (one-way) or `2` (round-trip) items. Each segment stores `flightId`, `cabinName`, `seatPrice` (snapshot in cents), and `seats` (mapping `passengerIndex` to `row` + `column`).
+- **Request DTO** ([create-flight-booking.dto.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/dto/create-flight-booking.dto.ts#L30-L83)): `CreateFlightBookingDto.segments` accepts 1–2 `BookingSegmentDto` items (`{ flightId, cabinName }`). Because each segment specifies its own `cabinName`, outbound and return legs can use different cabins.
+
+---
+
+### 2. Booking Creation & Validation (`POST /api/flight-bookings` & `/hold`)
+Handled by `FlightBookingsService.create` in [flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L121-L222):
+
+1. **Flight & Route Checks**:
+   - Rejects using the same `flightId` for both segments.
+   - Expires any overdue holds on the involved flights first (`expireOverdueHolds`).
+   - Verifies each flight is `Scheduled` and not departed, its airline is `Active`, and the requested cabin exists.
+   - Calls `assertReturnTrip(outbound.flight, inbound.flight)` ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L1085-L1095)) to enforce:
+     - **Reverse route**: `inbound.departure.airportId === outbound.arrival.airportId` and `inbound.arrival.airportId === outbound.departure.airportId`.
+     - **Chronological order**: `inbound.departure.timestamp > outbound.arrival.timestamp`.
+2. **Passenger Classification**:
+   - Passenger types (`adult`, `child`, `infant`) are determined from `dateOfBirth` on the **outbound** flight's departure date in the outbound departure airport's local timezone (`passengerTypeOn` in [booking-rules.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/booking-rules.ts#L30-L42)).
+3. **Baggage & Pricing**:
+   - `assertBaggage` validates each passenger's `extraBagWeights` against **both** flights' `maxBagWeight` and **both** airlines' `maxExtraBagCount`.
+   - `baggageFee` is charged per flight and summed across both segments ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L159-L165)).
+   - `fareTotal` sums `segmentFare(cabin.seatPrice, seatedPassengers, infants)` across both segments (infants pay 10% rounded and occupy no seat).
+4. **Atomic Seat Holding & Rollback**:
+   - `holdSeats` reserves seats segment-by-segment using atomic `findOneAndUpdate` calls (`tryHoldSeats`). If holding the return flight fails—or saving the booking document fails—`releaseHeld(held)` releases the outbound seats that were already held ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L173-L219)).
+   - The booking is saved as `Pending Payment` with a single `holdExpiresAt` (10 minutes).
+
+---
+
+### 3. Post-Booking Lifecycle
+Once created, the two segments are managed together (or individually for flight changes):
+
+- **Payment & Expiry** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L280-L362)): `confirmPaid` marks seats `BOOKED` across all segments; `expireOverdueHolds` releases `HELD` seats across all segments back to `AVAILABLE`.
+- **Listing** ([booking-list.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/booking-list.ts#L44-L64)): `bookingListPipeline` looks up `segments[0]` (the outbound flight) to classify the booking as `upcoming` or `past`.
+- **E-Ticket PDF** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L822-L838)): `eTicket` prints both `Outbound` and `Return` flight sections and formats each passenger's seats as `outbound <seat>, return <seat>`.
+- **Cancellation** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L374-L429), [L863-L887](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L863-L887)): Cancelling applies to the entire booking, releases `BOOKED` seats on both segments, and calculates the refund percentage using the **outbound** flight's airline cancellation tiers and days left before the **outbound** departure.
+- **Changing a Flight (`PATCH /api/flight-bookings/:id/change-flight`)** ([change-flight.dto.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/dto/change-flight.dto.ts#L8-L19), [flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L440-L493)):
+  - `segmentIndex` (`0` = outbound, `1` = return) selects which leg to replace on a `Confirmed` booking.
+  - Re-validates same route, same airline, same cabin, baggage limits, and re-runs `assertReturnTrip` against the unchanged segment so the return still departs after the outbound lands.
+  - When changing the outbound leg (`segmentIndex === 0`), it also verifies that the new departure date does not change any passenger's age category (`adult`/`child`/`infant`).
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: So which is the better implementation? Should we keep the return flight ID, or is the dynamic one better?
+
+------------------------------------------------
+
+RESPONSE: The dynamic segments implementation is the better design, and it is the one the entire codebase actually uses. Flight.roundTripFlightId is currently unused schema left over from early modeling.
+
+Dynamic segments vs. Flight.roundTripFlightId
+Aspect	Dynamic segments (Current)	Flight.roundTripFlightId (Unused)
+Route & Date Flexibility	Users can pair any outbound flight with any return flight on the reverse route departing after arrival (assertReturnTrip).	Forces a static 1-to-1 link between two Flight documents; doesn't fit varying return dates.
+Mixed Airlines / Cabins	Outbound and return legs can be on different airlines and in different cabins (Economy out, Business back).	Assumes a single paired return flight; awkward for multi-airline or multi-date search.
+Flight Changes (FLT-27)	changeFlight can swap segmentIndex 0 or 1 independently while re-checking assertReturnTrip.	Modifying one leg would conflict with a fixed roundTripFlightId on the Flight document.
+
+Recommendation: You can safely remove roundTripFlightId (and its pre('validate') check) from flight.schema.ts unless you specifically plan to add a "featured/suggested return flight" feature later. Keeping an unused field on Flight only creates confusion about where round-trip pairing lives.
+
+================================================
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: Let's remove it.
+
+------------------------------------------------
+
+RESPONSE: Removed roundTripFlightId and its validation check from flight.schema.ts. The backend build and test suite are currently running; waiting for the results.
+
+================================================
+
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: We need to implement the following API endpoints:
+
+|`GET`|`/api/admin/audit-logs`|`GEN-07`|
+|`GET`|`/api/admin/reports`|`GEN-09`, `GEN-10`|
+|`PATCH`|`/api/admin/reports/:id`|`GEN-10`|
+|`DELETE`|`/api/admin/content/:type/:id`|`GEN-10`|
+|`GET`|`/api/flights/search`|`FLT-11`, `FLT-12`, `FLT-15`|
+|`GET`|`/api/itineraries/:id/flights`|`ITN-26`|
+
+How should we do them in a high quality?
+Good, now do these. If you ever need help, refer to project description (md) and functional requirements (csv)
+
+------------------------------------------------
+
+RESPONSE: Implemented all six endpoints with Mongoose schemas, DTOs, Swagger documentation, transactional moderation/audit logging, and Vitest unit tests:
+1. Added `AuditLog` (`audit_logs`, GEN-07) and `Report` (`reports` with unique `{ reporterId, targetType, targetId }` index, GEN-09/GEN-10) schemas in `backend/src/database/schemas/`, added `isHidden` support on `Comment`, `HotelReview`, and `Itinerary` (GEN-10) plus `cityId` on `ItineraryDay` (ITN-05/ITN-26), and registered the models in `DatabaseModule`.
+2. Implemented `AdminModerationController` and `AdminModerationService` (`GET /api/admin/audit-logs`, `GET /api/admin/reports`, `PATCH /api/admin/reports/:id`, `DELETE /api/admin/content/:type/:id`) with MongoDB transactions, content hiding/deletion across posts, comments, reviews (with hotel averageRating recalculation), and itineraries, and atomic audit logging.
+3. Implemented `FlightSearchController` and `FlightSearchService` (`GET /api/flights/search`, FLT-11, FLT-12, FLT-15) supporting one-way and round-trip searches in the departure airport's IANA time zone, passenger mix rules (`adults >= 1`, `infants <= adults`, seated = `adults + children`, infants at 10% fare), optional cabin and min/max price filtering, sorting by price/duration/departureTime, and 10-item pagination.
+4. Implemented `ItinerariesController` and `ItinerariesService` (`GET /api/itineraries/:id/flights`, ITN-26) verifying ownership/visibility, resolving all airports in the city of the itinerary's first day, defaulting outbound/return dates to the itinerary's start and last day dates, and reusing `FlightSearchService`.
+
+================================================
