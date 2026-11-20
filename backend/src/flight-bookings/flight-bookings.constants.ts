@@ -31,3 +31,6 @@ export const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 // Passport or national ID number: letters and digits only
 export const PASSPORT_NUMBER_PATTERN = /^[A-Za-z0-9]{5,20}$/;
+
+// FLT-27: PaymentIntent metadata.purpose of a fare difference paid for a flight change
+export const FLIGHT_CHANGE_PURPOSE = 'flight_change';

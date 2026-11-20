@@ -8,7 +8,8 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ACCESS_TOKEN_COOKIE } from './auth/auth.helper.js';
 
 async function bootstrap() {
-    const app = await NestFactory.create<NestExpressApplication>(AppModule);
+    // rawBody: the Stripe webhook (PAY-01) checks its signature against the exact bytes Stripe sent
+    const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
     app.setGlobalPrefix('api');
 
