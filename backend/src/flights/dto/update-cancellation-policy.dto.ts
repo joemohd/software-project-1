@@ -4,7 +4,7 @@ import { ArrayMaxSize, IsArray, IsInt, Max, Min, ValidateNested } from 'class-va
 import { MAX_CANCELLATION_TIERS } from '../flights.constants.js';
 
 // FLT-09: one refund tier
-export class CancellationTierDto {
+export class AirlineCancellationTierDto {
   @ApiProperty({
     description: 'Applies when at least this many days remain before departure (whole number >= 0, unique per airline)',
     example: 7,
@@ -25,14 +25,14 @@ export class CancellationTierDto {
 // FLT-09: body for PUT /api/airlines/:id/cancellation-policy (replaces all tiers; [] means no refunds)
 export class UpdateCancellationPolicyDto {
   @ApiProperty({
-    type: [CancellationTierDto],
+    type: [AirlineCancellationTierDto],
     description: `Up to ${MAX_CANCELLATION_TIERS} tiers. The refund uses the tier with the highest threshold not exceeding the days remaining; if none applies, the refund is 0%.`,
   })
   @IsArray()
   @ArrayMaxSize(MAX_CANCELLATION_TIERS)
   @ValidateNested({ each: true })
-  @Type(() => CancellationTierDto)
-  tiers: CancellationTierDto[];
+  @Type(() => AirlineCancellationTierDto)
+  tiers: AirlineCancellationTierDto[];
 }
 
 // FLT-09: the stored tiers, sorted by threshold
@@ -40,6 +40,6 @@ export class CancellationPolicyResponseDto {
   @ApiProperty({ example: '665f1c2e9b1e8a0012345678' })
   airlineId: string;
 
-  @ApiProperty({ type: [CancellationTierDto] })
-  tiers: CancellationTierDto[];
+  @ApiProperty({ type: [AirlineCancellationTierDto] })
+  tiers: AirlineCancellationTierDto[];
 }

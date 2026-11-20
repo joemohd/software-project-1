@@ -366,3 +366,14 @@ Merge origin/dev again (PRs #20 and #21 landed after PR #23 was opened). Resolve
 How the output was used:
 Reviewed and committed the merge. package.json has luxon and cookie-parser once each; package-lock.json has luxon 3.7.2 once (npm 11's libc-only lock rewrite was not kept). AI_PROMPTS.txt keeps dev's entries, then mine. Tests 514/514 and lint passed. npm run build fails with 20 type errors in src/auth, src/hotels and src/users, and the app does not start (four dev files import { Connection } from 'mongoose' as a runtime import); origin/dev alone has the same errors and the same crash. Dev's AirlinesModule writes the same bagPolicy field names and checks ownership the same way (Airline.moderatorId = current user id), and its routes (POST /, GET /:id, PATCH /:id) do not overlap mine. Committed and pushed with these gaps noted in the PR, as approved.
 ================================================
+
+================================================
+Date: 2026-11-20
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-09
+Prompt:
+Small follow-up PR: from the latest dev, branch fix/FLT-09-swagger-dto-name, rename my CancellationTierDto to AirlineCancellationTierDto (only my file and its usages), build/test/lint, commit "fix(flights): rename CancellationTierDto to avoid Swagger schema clash with hotels (FLT-09)", push and open a PR into dev.
+How the output was used:
+A boot check of merged dev found that src/flights/dto/update-cancellation-policy.dto.ts and src/hotels/dto/update-hotel-policies.dto.ts both declared a class named CancellationTierDto. Swagger keys schemas by class name, so /api/docs showed the airline tier shape (daysBeforeDeparture) for PUT /api/hotels/{id}/policies instead of daysBeforeCheckIn. Renamed only the flights class and its uses in src/flights (2 files); hotels is unchanged. Validation and the API body are unchanged; only the Swagger schema name differs. Tests 514/514 and lint passed; npm run build still shows only the 20 type errors in auth, hotels and users that exist on dev.
+================================================
