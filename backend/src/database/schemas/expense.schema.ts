@@ -234,9 +234,12 @@ export class Booking extends Expense {
     // TODO: Get back to it after changing the Stripe API
     @Prop({
         type: Payment,
-        required: true
+        default: null
     })
-    payment: Payment;
+    payment: Payment | null;
+
+    @Prop({ type: Date, default: null })
+    policiesAcceptedAt: Date | null;
 }
 
 @Schema({ _id: false })
@@ -298,22 +301,114 @@ export class HotelBooking extends Booking {
     rooms: RoomBooking[];
 }
 
+export enum PassengerType {
+    ADULT = 'adult',
+    CHILD = 'child',
+    INFANT = 'infant'
+}
+
 @Schema({ _id: false })
-export class FlightPassenger {
+export class FlightSeatAssignment {
+    @Prop({
+        type: Number,
+        required: true,
+        min: 0,
+        validate: Number.isInteger
+    })
+    passengerIndex: number;
+
     @Prop({
         type: Number,
         required: true,
         min: 1,
         validate: Number.isInteger
     })
-    count: number;
+    row: number;
+
+    @Prop({
+        type: String,
+        required: true,
+        uppercase: true,
+        match: /^[A-Z]$/
+    })
+    column: string;
+}
+
+@Schema({ _id: false })
+export class FlightSegment {
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: Flight.name,
+        required: true
+    })
+    flightId: Types.ObjectId;
 
     @Prop({
         type: String,
         enum: Object.values(CabinType),
         required: true
     })
-    cabinType: CabinType;
+    cabinName: CabinType;
+
+    // Integer cents, copied from the cabin at booking time
+    @Prop({
+        type: Number,
+        required: true,
+        min: 0,
+        validate: Number.isSafeInteger
+    })
+    seatPrice: number;
+
+    @Prop({
+        type: [FlightSeatAssignment],
+        default: []
+    })
+    seats: FlightSeatAssignment[];
+}
+
+@Schema({ _id: false })
+export class FlightPassenger {
+    @Prop({
+        type: String,
+        required: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 100
+    })
+    fullName: string;
+
+    @Prop({
+        type: Date,
+        required: true
+    })
+    dateOfBirth: Date;
+
+    @Prop({
+        type: String,
+        enum: Object.values(PassengerType),
+        required: true
+    })
+    type: PassengerType;
+
+    @Prop({
+        type: String,
+        required: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 20
+    })
+    passportNumber: string;
+
+    @Prop({
+        type: [Number],
+        default: [],
+        validate: {
+            validator: (weights: number[]) => weights.every((weight) => typeof weight === 'number' && weight > 0),
+            message: 'Extra bag weights must be positive numbers'
+        }
+    })
+    extraBagWeights: number[];
 }
 
 @Schema({
@@ -323,20 +418,56 @@ export class FlightPassenger {
     _id: true
 })
 export class FlightBooking extends Booking {
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
-        type: Types.ObjectId,
-        ref: Flight.name,
-        required: true
+        type: String,
+        required: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 20
     })
-    flightId: Types.ObjectId;
+    reference: string;
 
-    // TODO: Add typical verification that we have
+    @Prop({
+        type: [FlightSegment],
+        required: true,
+        validate: {
+            validator: (segments: FlightSegment[]) =>
+                Array.isArray(segments) && segments.length >= 1 && segments.length <= 2,
+            message: 'A flight booking must have one or two segments'
+        }
+    })
+    segments: FlightSegment[];
+
     @Prop({
         type: [FlightPassenger],
-        required: true
+        required: true,
+        validate: {
+            validator: (passengers: FlightPassenger[]) => Array.isArray(passengers) && passengers.length >= 1,
+            message: 'At least one passenger is required'
+        }
     })
-    passenger: FlightPassenger[];
+    passengers: FlightPassenger[];
+
+    // Integer cents
+    @Prop({
+        type: Number,
+        required: true,
+        min: 0,
+        validate: Number.isSafeInteger
+    })
+    fareTotal: number;
+
+    // Integer cents
+    @Prop({
+        type: Number,
+        min: 0,
+        validate: Number.isSafeInteger,
+        default: 0
+    })
+    baggageFee: number;
+
+    @Prop({ type: Date, default: null })
+    holdExpiresAt: Date | null;
 }
 
 @Schema({
@@ -457,8 +588,18 @@ export const HotelBookingSchema = SchemaFactory.createForClass(HotelBooking);
 export const FlightBookingSchema = SchemaFactory.createForClass(FlightBooking);
 export const BookingRoomSchema = SchemaFactory.createForClass(RoomBooking);
 export const FlightPassengerSchema = SchemaFactory.createForClass(FlightPassenger);
+export const FlightSegmentSchema = SchemaFactory.createForClass(FlightSegment);
 
 ExpenseSchema.index({ userId: 1, createdAt: -1 });
+
+// The expenses collection is shared by all expense types, so the unique index only covers
+// documents that have a reference; otherwise every non-flight expense would collide on null.
+FlightBookingSchema.index(
+    { reference: 1 },
+    { unique: true, partialFilterExpression: { reference: { $type: 'string' } } }
+);
+FlightBookingSchema.index({ 'segments.flightId': 1, status: 1 });
+FlightBookingSchema.index({ status: 1, holdExpiresAt: 1 });
 
 ActivityCategorySchema.index(
     { userId: 1, name: 1 },
