@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Connection, Model, Types } from 'mongoose';
+import { type Connection, type Model, Types } from 'mongoose';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { rethrowProviderError } from '../common/providers/profile.rules.js';
 import { Airline, ProviderStatus } from '../database/schemas/provider.schema.js';

@@ -16,6 +16,10 @@ import { UpdateAvailabilityDto } from './dto/update-availability.dto.js';
 import { UpdateHotelDto } from './dto/update-hotel.dto.js';
 import { UpdateHotelPoliciesDto } from './dto/update-hotel-policies.dto.js';
 import { UpdateRoomDto } from './dto/update-room.dto.js';
+import { SearchHotelsDto } from './dto/search-hotels.dto.js';
+import { AvailableRoomsQueryDto } from './dto/available-rooms-query.dto.js';
+import { ListReservationsDto } from './dto/list-reservations.dto.js';
+import { ListHotelReviewsDto } from './dto/list-hotel-reviews.dto.js';
 import { HotelsService } from './hotels.service.js';
 
 @ApiTags('Hotels')
@@ -46,6 +50,43 @@ export class HotelsController {
   @ApiNotFoundResponse({ description: 'Hotel not found or not assigned to you' })
   update(@CurrentUser() user: AuthenticatedUser, @Param() params: ProviderIdParamDto, @Body() dto: UpdateHotelDto): Promise<HotelProfileDto> {
     return this.hotelsService.update(user, params.id, dto);
+  }
+
+  // NOTE: `search` must be declared before `:id` so it is not captured by the :id route.
+  @Public()
+  @Get('search')
+  @ApiOperation({ summary: 'HTL-11 / HTL-12: search, filter and sort hotels for a stay.' })
+  searchHotels(@Query() query: SearchHotelsDto) {
+    return this.hotelsService.searchHotels(query);
+  }
+
+  @Public()
+  @Get(':id/rooms/available')
+  @ApiOperation({ summary: "HTL-15: a hotel's rooms free for the searched dates." })
+  @ApiParam({ name: 'id', description: 'Hotel ID' })
+  availableRooms(@Param('id') hotelId: string, @Query() query: AvailableRoomsQueryDto) {
+    return this.hotelsService.availableRooms(hotelId, query);
+  }
+
+  @Public()
+  @Get(':id/reviews')
+  @ApiOperation({ summary: "HTL-24: a hotel's rating and reviews (newest first, paginated)." })
+  @ApiParam({ name: 'id', description: 'Hotel ID' })
+  listReviews(@Param('id') hotelId: string, @Query() query: ListHotelReviewsDto) {
+    return this.hotelsService.listHotelReviews(hotelId, query);
+  }
+
+  @Get(':id/reservations')
+  @Roles(UserRole.HOTEL_MODERATOR)
+  @ApiCookieAuth()
+  @ApiOperation({ summary: "HTL-22: hotel moderator views their hotel's reservations." })
+  @ApiParam({ name: 'id', description: 'Hotel ID' })
+  reservations(
+    @Param('id') hotelId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListReservationsDto,
+  ) {
+    return this.hotelsService.reservationsForHotel(hotelId, user, query);
   }
 
   @Public()

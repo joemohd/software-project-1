@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { Connection, Model } from 'mongoose';
+import type { Connection, Model } from 'mongoose';
 import { clearedLoginAttempts, hashPassword } from '../auth/auth.helper.js';
 import type { AuthenticatedUser, UserRecord } from '../auth/auth.types.js';
 import { MessageResponseDto } from '../auth/dto/auth-response.dto.js';

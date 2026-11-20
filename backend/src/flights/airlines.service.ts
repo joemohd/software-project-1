@@ -5,7 +5,7 @@ import { Airline, CancellationPolicy, ProviderStatus } from '../database/schemas
 import { BaggagePolicyResponseDto, UpdateBaggagePolicyDto } from './dto/update-baggage-policy.dto.js';
 import {
   CancellationPolicyResponseDto,
-  CancellationTierDto,
+  AirlineCancellationTierDto,
   UpdateCancellationPolicyDto,
 } from './dto/update-cancellation-policy.dto.js';
 
@@ -87,7 +87,7 @@ export class AirlinesService {
  * the highest threshold not exceeding the days remaining" is exactly the interval containing that day,
  * and fewer days than the lowest threshold match no interval, i.e. a 0% refund.
  */
-export function toCancellationPolicies(tiers: CancellationTierDto[]): CancellationPolicy[] {
+export function toCancellationPolicies(tiers: AirlineCancellationTierDto[]): CancellationPolicy[] {
   const sorted = [...tiers].sort((a, b) => a.daysBeforeDeparture - b.daysBeforeDeparture);
 
   const duplicates = sorted
@@ -109,7 +109,7 @@ export function toCancellationPolicies(tiers: CancellationTierDto[]): Cancellati
 }
 
 /** Stored intervals -> FLT-09 tiers, sorted by threshold. */
-export function toCancellationTiers(policies: CancellationPolicy[]): CancellationTierDto[] {
+export function toCancellationTiers(policies: CancellationPolicy[]): AirlineCancellationTierDto[] {
   return policies
     .map((policy) => ({
       daysBeforeDeparture: policy.daysBeforeService.startDay,

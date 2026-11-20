@@ -49,6 +49,9 @@ export class User {
     })
     passwordHash: string;
 
+    @Prop({ type: Boolean, default: false })
+    mustChangePassword: boolean;
+
     @Prop({
         type: String,
         trim: true,
@@ -57,6 +60,14 @@ export class User {
     })
     phoneNumber: string;
     // transoformation of phone numbers into a format ITU-T E.164 standard should be handled by the backend server not the database
+
+    // ACC-09: display preference; booking amounts still use the platform currency.
+    @Prop({ type: String, trim: true, uppercase: true, match: /^[A-Z]{3}$/, default: null })
+    preferredCurrency: string | null;
+
+    // Incrementing this invalidates previously issued access tokens.
+    @Prop({ type: Number, default: 0, min: 0, validate: Number.isSafeInteger })
+    sessionVersion: number;
 
     @Prop({
         type: String,
@@ -139,6 +150,16 @@ export class User {
         default: false
     })
     isVerified: boolean;
+
+    // ACC-01: when the user ticked the terms-and-privacy checkbox at registration.
+    // Only self-registered users have it: admins are seeded (ACC-18) and moderators are created by an admin (ACC-13).
+    @Prop({
+        type: Date,
+        required: function (this: User) {
+            return this.role === UserRole.USER;
+        }
+    })
+    termsAcceptedAt?: Date;
 
     @Prop({
         type: Types.ObjectId,
