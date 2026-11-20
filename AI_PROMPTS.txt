@@ -377,9 +377,7 @@ Implement the Itineraries API (section 8.8 mandatory endpoints) on feature/ITN-0
 How the output was used:
 Claude wrote the itineraries module directly in my repository on feature/ITN-01-itineraries-api. I reviewed the design decisions it reported (embedding days/activities/budgets/transport in the itinerary instead of the shared expenses collection, and ITN-25/26 returning the hotel/flight search criteria because HTL-11 and FLT-11/12 are not on dev yet) and kept them. The new unit tests were run on my machine: 9/9 passed (itinerary-rules.spec.ts and exchange-rate.service.spec.ts), and the TypeScript check showed no errors in src/itineraries (the remaining errors are in other modules and already exist on dev). The work was committed locally as 611fd2a. An end-to-end run through Swagger against the database is still pending because my backend/.env was not set up yet.
 Notes from the assistant: days, activities, budget entries and transport costs are embedded in the itinerary document (bounded, parent-owned data) instead of using the shared expenses collection, because the Expense/Activity/Transport schemas have no currency field and Activity requires a category id, which ITN-14/16/18 don't fit. The shared expense.schema.ts was not changed. ITN-25/26 return the derived search criteria and the ready-to-run /api/hotels/search and /api/flights/search requests, since HTL-11 and FLT-11/12 are not implemented on dev yet.
-================================================
 
-================================================
 Date: 2026-11-20
 Student: Ahmed Mohamed Ali
 Tool: Claude (claude.ai, working directly in the repo through the desktop app)
@@ -388,4 +386,232 @@ Prompt:
 Implement the itinerary endpoints from the API table that are still missing (POST /api/itineraries/:id/bookings for ITN-27 and GET /api/itineraries/:id/pdf for ITN-28) and double-check the activity image endpoints. Test everything end to end before committing.
 How the output was used:
 Claude added ITN-27 (link my own Confirmed/Completed flight and hotel bookings to itinerary days, plus an unlink route; linked bookings appear on the day and in the budget summary in the platform currency, unconverted per PAY-04, and are hidden from the public view and not copied by clones) and ITN-28 (PDF export with pdfkit, added as a backend dependency). I kept both designs. Before that, an end-to-end run against a throwaway local MongoDB found a bug where deleting an itinerary always returned 404; it was fixed and committed. Unit tests: 12/12 passed. End-to-end run: 52/52 checks passed, including linking, duplicate/pending/other-user booking rejections, budget totals with bookings, the PDF download, and another user being refused the PDF. I reviewed the generated PDF. A real Cloudinary image upload is still untested because no Cloudinary key is configured locally.
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: None (developer documentation and branch update)
+Prompt:
+Explore this codebase and document it in CLAUDE.md. Scan the project without fixing or editing anything, then write the documentation into backend/CLAUDE.md. Then update my branch with the latest version posted on GitHub.
+How the output was used:
+Scanned the repository read-only and reviewed the drafted CLAUDE.md. Saved it as backend/CLAUDE.md, below the existing @AGENTS.md import line; it covers commands, the database module and discriminator layout, and schema conventions. Fetched origin and fast-forwarded feat/payment, which had no commits of its own, to origin/dev (65 commits). No source code was changed and no tests were run.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-01 (payments: create, retry, status)
+Prompt:
+Build the payments module with Stripe in test mode: POST /api/payments to pay for a Pending Payment booking, POST /api/payments/:id/retry to retry a failed payment, and GET /api/payments/:id for the payment status. Only store the Stripe payment id, amount, currency and status, never card details.
+How the output was used:
+Added src/payments (PaymentsController, PaymentsService, StripeService/StripeModule, DTOs) for registered users only. A Stripe PaymentIntent is created for the booking total; if the booking already has one it is reused, so a double click doesn't charge twice. Totals below 0.50 USD are rejected. For Swagger testing, testPaymentMethod (pm_card_visa / pm_card_chargeDeclined) confirms the intent with a test key only. The booking becomes Confirmed only after the backend reads back from Stripe that the exact total was paid. Retry works while the 10-minute hold lasts and the Stripe status allows it. The Payment schema in expense.schema.ts moved from Checkout Session fields to paymentIntentId, amount, currency and PaymentIntent status, plus the last failure message. Added the stripe dependency and STRIPE_SECRET_KEY to .env.example.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-01 (Stripe webhook)
+Prompt:
+Add POST /api/payments/webhook so Stripe can tell the backend when a payment succeeds or fails. Verify the Stripe signature.
+How the output was used:
+Added PaymentsWebhookController, which is public (no login or role check) and hidden from Swagger. The Stripe signature is checked against the raw request body (rawBody: true in main.ts). It returns 503 if STRIPE_WEBHOOK_SECRET is not set and 400 for a missing or invalid signature. Payment and refund events update the stored payment, booking and refund status. STRIPE_WEBHOOK_SECRET and the stripe listen command are documented in .env.example.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-02 (booking policies)
+Prompt:
+Add GET /api/bookings/:type/:id/policies to show the provider's policies for a booking, and POST /api/bookings/:type/:id/accept-policies to accept them. Payment must not be possible before the policies are accepted.
+How the output was used:
+Added BookingPoliciesController. :type is flight or hotel. Airline bookings show the cancellation tiers and baggage rules; hotel bookings show the cancellation tiers and check-in/check-out times. Accepting requires accepted: true, stores the time of acceptance, and only works on a Pending Payment booking whose hold has not expired. POST /api/payments returns 409 until the policies are accepted. Someone else's booking returns 404.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-03 (refunds)
+Prompt:
+Add GET /api/refunds/:id to show a refund's status (Pending, Refunded or Failed). Refunds follow the provider's cancellation policy.
+How the output was used:
+Added RefundsService and RefundsController. Refunds are issued through Stripe and stored; GET /api/refunds/:id reads the latest status from Stripe and falls back to the stored status if Stripe can't be reached. Webhook refund events keep the stored status in sync. The refund amount rules are in src/payments/refund-policy.ts as pure functions with unit tests (refund-policy.spec.ts). Only the owner of the booking can see the refund.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-22 (seat hold)
+Prompt:
+Add POST /api/flight-bookings/hold, as named in the endpoint table, to hold seats for 10 minutes as a Pending Payment booking.
+How the output was used:
+Added POST /api/flight-bookings/hold in flight-bookings.controller.ts; it does the same as POST /api/flight-bookings. When the hold expires, the booking's Stripe PaymentIntent is cancelled so it can no longer be paid. Added confirmPaid() so the payments module can confirm a flight booking after payment.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-23 (e-ticket)
+Prompt:
+Add GET /api/flight-bookings/:id/e-ticket to download the e-ticket as a PDF for a confirmed booking.
+How the output was used:
+Added the e-ticket endpoint and src/common/pdf/simple-pdf.ts, a small text-only PDF writer (A4, Helvetica), so no PDF library is needed. Only the owner can download it, and only once the booking is Confirmed (409 otherwise).
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-26 (cancel flight booking with refund)
+Prompt:
+Add POST /api/flight-bookings/:id/cancel so a user can cancel a confirmed booking before departure and get the refund the airline's cancellation policy allows.
+How the output was used:
+Added GET /api/flight-bookings/:id/cancellation, which shows the refund before the user confirms, and POST /api/flight-bookings/:id/cancel. The cancel uses a guarded update, so if two requests race only one cancels and refunds. The refund is issued through RefundsService (PAY-03). If the refund fails, the cancellation stands and the failure is reported. In-app notifications are left as TODO(GEN-01).
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: PAY-01, PAY-02, PAY-03, FLT-22, FLT-23, FLT-26 (check and commit)
+Prompt:
+Check these endpoints against the code and commit, with an AI_PROMPTS.txt entry for each part: POST /api/payments, POST /api/payments/:id/retry, GET /api/payments/:id, POST /api/payments/webhook (PAY-01); GET /api/bookings/:type/:id/policies, POST /api/bookings/:type/:id/accept-policies (PAY-02); GET /api/refunds/:id (PAY-03); POST /api/flight-bookings/hold (FLT-22); GET /api/flight-bookings/:id/e-ticket (FLT-23); POST /api/flight-bookings/:id/cancel (FLT-26); PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional); POST /api/hotel-bookings (HTL-16, HTL-18).
+How the output was used:
+All PAY-01/02/03 and FLT-22/23/26 routes exist. Not implemented: PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional) and POST /api/hotel-bookings (HTL-16, HTL-18). Tests 529/529 passed (one run had a flaky failure that passed on rerun) and lint passed with one warning. npm run build still fails with 20 type errors, all in src/auth, src/hotels and src/users, none in the payments or flight-bookings code. Committed; .vscode/ was left out.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: HTL-16, HTL-18
+Prompt:
+Implement POST /api/hotel-bookings (HTL-16, HTL-18). Only this endpoint: the hotel reservation list, details and cancel routes are not my part. Name it hotel booking, not reservation. Ask before doing anything else, and show me the commit before publishing.
+How the output was used:
+Added src/hotel-booking, which has only the create route, so it doesn't touch the hotel-bookings module on the teammate's branch. Rooms must be in the same hotel and active, each room gets adults and children (0-17), there must be at least one adult and no room over its max occupancy, and dates are checked (check-out after check-in, check-in not in the past at the hotel's local date). All rooms are held for 10 minutes in one MongoDB transaction; any overlap with a Confirmed reservation, an unexpired hold or a blocked range rejects the whole request. Adults are stored as age 18 in guestAges so the teammate's guest counts still work. Added holdExpiresAt to HotelBooking and pricePerNight to RoomBooking. Expired holds are swept every minute. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
+
+Date: 2026-11-20
+Student: Mahmoud
+Tool: Claude Code
+Related Requirement: FLT-27 (optional)
+Prompt:
+Implement PATCH /api/flight-bookings/:id/change-flight (FLT-27): change a Confirmed booking's date or flight (same route and cabin), paying any fare difference via Stripe or receiving a refund of a lower fare, subject to seat availability.
+How the output was used:
+Added the change-flight route. The new flight must be on the same route, airline and cabin, a round trip must stay in order, and passenger types must not change. New seats are held atomically. A lower or equal fare is applied at once and the difference refunded; a higher fare stores a pending change with its own PaymentIntent and holds the seats 10 minutes, and the change is applied only after Stripe confirms the payment. Unpaid changes expire and release their seats. Refunds can now be split across the first payment and fare-difference payments (Refund.changeId added), and cancellation refunds use the booking total after changes. Build shows only the same 20 errors in auth, hotels and users that dev already has; the existing 529 tests pass. No tests written for this endpoint yet.
+Student: Eyad
+Tool: Claude Code
+Related Requirement: FLT-02..06, FLT-08, FLT-09, FLT-19, FLT-21, FLT-25, FLT-29 (openapi.yaml)
+Prompt:
+Add all my endpoints to openapi.yaml on a new branch docs/FLT-openapi from dev. Read how the file is written first (OpenAPI version, tags, $ref/components style, security scheme, error format); stop if it is missing or auto-generated. Add my 13 routes matching the real code (DTOs, validation, status codes, Swagger decorators): summary with requirement ID, who can call it, params, request body with examples, success response and the real 400/401/403/404/409 errors; shared schemas under components/schemas; name the tier schema AirlineCancellationTierDto (as in PR #24); money in integer cents, local times in, UTC out. Only add: stop if a path or schema name already exists. Check against the live /api/docs-json from a temporary worktree outside the repo with two local-only fixes (never committed) on a throwaway mongo:8.0 container; methods, paths, params and status codes must match; validate the YAML with a package already in node_modules. Show me the diff before committing.
+How the output was used:
+Reviewed the diff and approved it. The file is hand-maintained (no generator in the repo), so 13 operations on 12 paths, 30 schemas and 4 tags (Airports, Flights, Airlines, Flight bookings) were added, built from the live docs-json and checked against the controllers, DTOs and service exceptions. Add-only: git diff --patience shows 1368 additions, 0 deletions, and every original line is unchanged and in order. CancellationTierDto is documented as AirlineCancellationTierDto; money and validated whole numbers are type integer, holdExpiresAt and timeZone are nullable strings (the live doc says number/object there). My operations use the defined cookie scheme; the Blog operations' access_token reference was left for the blog owner. Verified: the YAML parses with js-yaml, every $ref resolves, and all 13 operations match the live doc on methods, paths, params, status codes, body and security. The temporary worktree, server and container were removed afterwards.
+Related Requirement: FLT-09
+Prompt:
+Small follow-up PR: from the latest dev, branch fix/FLT-09-swagger-dto-name, rename my CancellationTierDto to AirlineCancellationTierDto (only my file and its usages), build/test/lint, commit "fix(flights): rename CancellationTierDto to avoid Swagger schema clash with hotels (FLT-09)", push and open a PR into dev.
+How the output was used:
+A boot check of merged dev found that src/flights/dto/update-cancellation-policy.dto.ts and src/hotels/dto/update-hotel-policies.dto.ts both declared a class named CancellationTierDto. Swagger keys schemas by class name, so /api/docs showed the airline tier shape (daysBeforeDeparture) for PUT /api/hotels/{id}/policies instead of daysBeforeCheckIn. Renamed only the flights class and its uses in src/flights (2 files); hotels is unchanged. Validation and the API body are unchanged; only the Swagger schema name differs. Tests 514/514 and lint passed; npm run build still shows only the 20 type errors in auth, hotels and users that exist on dev.
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: I want you to walk me through how round-trip flights are implemented.
+
+------------------------------------------------
+
+RESPONSE: Round-trip flights are modeled as a single `FlightBooking` containing two `FlightSegment` entries (`segments[0]` for outbound, `segments[1]` for return), rather than linking two separate bookings.
+
+> [!NOTE]
+> The `Flight` schema defines an optional `roundTripFlightId` field with a self-reference check in [flight.schema.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/database/schemas/flight.schema.ts#L188-L228), but the booking flow does not use it—round trips are paired dynamically at booking time.
+
+---
+
+### 1. Data Model & Request DTO
+- **Database schema** ([expense.schema.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/database/schemas/expense.schema.ts#L416-L563)): `FlightBooking.segments` is an array of `FlightSegment` subdocuments validated to have `1` (one-way) or `2` (round-trip) items. Each segment stores `flightId`, `cabinName`, `seatPrice` (snapshot in cents), and `seats` (mapping `passengerIndex` to `row` + `column`).
+- **Request DTO** ([create-flight-booking.dto.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/dto/create-flight-booking.dto.ts#L30-L83)): `CreateFlightBookingDto.segments` accepts 1–2 `BookingSegmentDto` items (`{ flightId, cabinName }`). Because each segment specifies its own `cabinName`, outbound and return legs can use different cabins.
+
+---
+
+### 2. Booking Creation & Validation (`POST /api/flight-bookings` & `/hold`)
+Handled by `FlightBookingsService.create` in [flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L121-L222):
+
+1. **Flight & Route Checks**:
+   - Rejects using the same `flightId` for both segments.
+   - Expires any overdue holds on the involved flights first (`expireOverdueHolds`).
+   - Verifies each flight is `Scheduled` and not departed, its airline is `Active`, and the requested cabin exists.
+   - Calls `assertReturnTrip(outbound.flight, inbound.flight)` ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L1085-L1095)) to enforce:
+     - **Reverse route**: `inbound.departure.airportId === outbound.arrival.airportId` and `inbound.arrival.airportId === outbound.departure.airportId`.
+     - **Chronological order**: `inbound.departure.timestamp > outbound.arrival.timestamp`.
+2. **Passenger Classification**:
+   - Passenger types (`adult`, `child`, `infant`) are determined from `dateOfBirth` on the **outbound** flight's departure date in the outbound departure airport's local timezone (`passengerTypeOn` in [booking-rules.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/booking-rules.ts#L30-L42)).
+3. **Baggage & Pricing**:
+   - `assertBaggage` validates each passenger's `extraBagWeights` against **both** flights' `maxBagWeight` and **both** airlines' `maxExtraBagCount`.
+   - `baggageFee` is charged per flight and summed across both segments ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L159-L165)).
+   - `fareTotal` sums `segmentFare(cabin.seatPrice, seatedPassengers, infants)` across both segments (infants pay 10% rounded and occupy no seat).
+4. **Atomic Seat Holding & Rollback**:
+   - `holdSeats` reserves seats segment-by-segment using atomic `findOneAndUpdate` calls (`tryHoldSeats`). If holding the return flight fails—or saving the booking document fails—`releaseHeld(held)` releases the outbound seats that were already held ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L173-L219)).
+   - The booking is saved as `Pending Payment` with a single `holdExpiresAt` (10 minutes).
+
+---
+
+### 3. Post-Booking Lifecycle
+Once created, the two segments are managed together (or individually for flight changes):
+
+- **Payment & Expiry** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L280-L362)): `confirmPaid` marks seats `BOOKED` across all segments; `expireOverdueHolds` releases `HELD` seats across all segments back to `AVAILABLE`.
+- **Listing** ([booking-list.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/booking-list.ts#L44-L64)): `bookingListPipeline` looks up `segments[0]` (the outbound flight) to classify the booking as `upcoming` or `past`.
+- **E-Ticket PDF** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L822-L838)): `eTicket` prints both `Outbound` and `Return` flight sections and formats each passenger's seats as `outbound <seat>, return <seat>`.
+- **Cancellation** ([flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L374-L429), [L863-L887](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L863-L887)): Cancelling applies to the entire booking, releases `BOOKED` seats on both segments, and calculates the refund percentage using the **outbound** flight's airline cancellation tiers and days left before the **outbound** departure.
+- **Changing a Flight (`PATCH /api/flight-bookings/:id/change-flight`)** ([change-flight.dto.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/dto/change-flight.dto.ts#L8-L19), [flight-bookings.service.ts](file:///Users/joemohd/Projects/Travel%20and%20Booking%20System/backend/src/flight-bookings/flight-bookings.service.ts#L440-L493)):
+  - `segmentIndex` (`0` = outbound, `1` = return) selects which leg to replace on a `Confirmed` booking.
+  - Re-validates same route, same airline, same cabin, baggage limits, and re-runs `assertReturnTrip` against the unchanged segment so the return still departs after the outbound lands.
+  - When changing the outbound leg (`segmentIndex === 0`), it also verifies that the new departure date does not change any passenger's age category (`adult`/`child`/`infant`).
+
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: So which is the better implementation? Should we keep the return flight ID, or is the dynamic one better?
+
+------------------------------------------------
+
+RESPONSE: The dynamic segments implementation is the better design, and it is the one the entire codebase actually uses. Flight.roundTripFlightId is currently unused schema left over from early modeling.
+
+Dynamic segments vs. Flight.roundTripFlightId
+Aspect	Dynamic segments (Current)	Flight.roundTripFlightId (Unused)
+Route & Date Flexibility	Users can pair any outbound flight with any return flight on the reverse route departing after arrival (assertReturnTrip).	Forces a static 1-to-1 link between two Flight documents; doesn't fit varying return dates.
+Mixed Airlines / Cabins	Outbound and return legs can be on different airlines and in different cabins (Economy out, Business back).	Assumes a single paired return flight; awkward for multi-airline or multi-date search.
+Flight Changes (FLT-27)	changeFlight can swap segmentIndex 0 or 1 independently while re-checking assertReturnTrip.	Modifying one leg would conflict with a fixed roundTripFlightId on the Flight document.
+
+Recommendation: You can safely remove roundTripFlightId (and its pre('validate') check) from flight.schema.ts unless you specifically plan to add a "featured/suggested return flight" feature later. Keeping an unused field on Flight only creates confusion about where round-trip pairing lives.
+
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: Let's remove it.
+
+------------------------------------------------
+
+RESPONSE: Removed roundTripFlightId and its validation check from flight.schema.ts. The backend build and test suite are currently running; waiting for the results.
+
+
+
+STUDENT: Youssef Mohamed
+DATE: 2026-11-20
+AGENT: Antigravity
+
+------------------------------------------------
+
+PROMPT: We need to implement the following API endpoints:
+
+|`GET`|`/api/admin/audit-logs`|`GEN-07`|
+|`GET`|`/api/admin/reports`|`GEN-09`, `GEN-10`|
+|`PATCH`|`/api/admin/reports/:id`|`GEN-10`|
+|`DELETE`|`/api/admin/content/:type/:id`|`GEN-10`|
+|`GET`|`/api/flights/search`|`FLT-11`, `FLT-12`, `FLT-15`|
+|`GET`|`/api/itineraries/:id/flights`|`ITN-26`|
+
+How should we do them in a high quality? If you ever need help, refer to project description (md) and functional requirements (csv)
+
+------------------------------------------------
+
+RESPONSE: Implemented all six endpoints with Mongoose schemas, DTOs, Swagger documentation, transactional moderation/audit logging, and Vitest unit tests:
+1. Added `AuditLog` (`audit_logs`, GEN-07) and `Report` (`reports` with unique `{ reporterId, targetType, targetId }` index, GEN-09/GEN-10) schemas in `backend/src/database/schemas/`, added `isHidden` support on `Comment`, `HotelReview`, and `Itinerary` (GEN-10) plus `cityId` on `ItineraryDay` (ITN-05/ITN-26), and registered the models in `DatabaseModule`.
+2. Implemented `AdminModerationController` and `AdminModerationService` (`GET /api/admin/audit-logs`, `GET /api/admin/reports`, `PATCH /api/admin/reports/:id`, `DELETE /api/admin/content/:type/:id`) with MongoDB transactions, content hiding/deletion across posts, comments, reviews (with hotel averageRating recalculation), and itineraries, and atomic audit logging.
+3. Implemented `FlightSearchController` and `FlightSearchService` (`GET /api/flights/search`, FLT-11, FLT-12, FLT-15) supporting one-way and round-trip searches in the departure airport's IANA time zone, passenger mix rules (`adults >= 1`, `infants <= adults`, seated = `adults + children`, infants at 10% fare), optional cabin and min/max price filtering, sorting by price/duration/departureTime, and 10-item pagination.
+4. Implemented `ItinerariesController` and `ItinerariesService` (`GET /api/itineraries/:id/flights`, ITN-26) verifying ownership/visibility, resolving all airports in the city of the itinerary's first day, defaulting outbound/return dates to the itinerary's start and last day dates, and reusing `FlightSearchService`.
+
 ================================================

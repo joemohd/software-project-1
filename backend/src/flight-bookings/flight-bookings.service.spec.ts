@@ -100,6 +100,8 @@ describe('FlightBookingsService (FLT-19, FLT-21)', () => {
       airlineModel as never,
       airportModel as never,
       cityModel as never,
+      { stripe: { paymentIntents: { cancel: vi.fn() } } } as never,
+      { issue: vi.fn(async () => null) } as never,
     );
   });
 

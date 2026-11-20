@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Query, StreamableFile } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -9,14 +9,21 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiProduces,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { UserRole } from '../database/schemas/user.schema.js';
+import { ChangeFlightDto, ChangeFlightResponseDto } from './dto/change-flight.dto.js';
 import { CreateFlightBookingDto } from './dto/create-flight-booking.dto.js';
-import { FlightBookingListResponseDto, FlightBookingResponseDto } from './dto/flight-booking-response.dto.js';
+import {
+  CancellationQuoteDto,
+  CancelFlightBookingResponseDto,
+  FlightBookingListResponseDto,
+  FlightBookingResponseDto,
+} from './dto/flight-booking-response.dto.js';
 import { ListFlightBookingsQueryDto } from './dto/list-flight-bookings.dto.js';
 import { FlightBookingsService } from './flight-bookings.service.js';
 
@@ -57,6 +64,22 @@ export class FlightBookingsController {
     return this.flightBookingsService.create(userId, dto);
   }
 
+  // POST /api/flight-bookings/hold (FLT-22): the name used in the project's endpoint table; same as POST /api/flight-bookings
+  @Post('hold')
+  @ApiOperation({
+    summary: 'Hold seats for 10 minutes as a Pending Payment booking (FLT-22)',
+    description:
+      'Same as POST /api/flight-bookings. Seats are reserved atomically only if enough remain, so concurrent requests never ' +
+      'book more seats than exist. Unpaid holds expire after 10 minutes and the seats are released.',
+  })
+  @ApiCreatedResponse({ type: FlightBookingResponseDto })
+  @ApiBadRequestResponse({ description: 'Invalid body or passengers/baggage (see POST /api/flight-bookings)' })
+  @ApiNotFoundResponse({ description: 'Flight not found' })
+  @ApiConflictResponse({ description: 'Flight not bookable, or not enough seats left' })
+  hold(@CurrentUser('id') userId: string, @Body() dto: CreateFlightBookingDto): Promise<FlightBookingResponseDto> {
+    return this.flightBookingsService.create(userId, dto);
+  }
+
   // GET /api/flight-bookings (FLT-25)
   @Get()
   @ApiOperation({
@@ -79,5 +102,81 @@ export class FlightBookingsController {
   @ApiNotFoundResponse({ description: "Booking not found (also when it is someone else's)" })
   findOne(@CurrentUser('id') userId: string, @Param('id') bookingId: string): Promise<FlightBookingResponseDto> {
     return this.flightBookingsService.findOneForUser(userId, bookingId);
+  }
+
+  // GET /api/flight-bookings/:id/e-ticket (FLT-23)
+  @Get(':id/e-ticket')
+  @ApiOperation({ summary: 'Download the e-ticket (PDF) of a confirmed booking' })
+  @ApiParam({ name: 'id', description: 'Booking id' })
+  @ApiProduces('application/pdf')
+  @ApiOkResponse({ description: 'The e-ticket PDF', schema: { type: 'string', format: 'binary' } })
+  @ApiNotFoundResponse({ description: "Booking not found (also when it is someone else's)" })
+  @ApiConflictResponse({ description: 'Booking not confirmed yet' })
+  async eTicket(@CurrentUser('id') userId: string, @Param('id') bookingId: string): Promise<StreamableFile> {
+    const { fileName, pdf } = await this.flightBookingsService.eTicket(userId, bookingId);
+    return new StreamableFile(pdf, { type: 'application/pdf', disposition: `attachment; filename="${fileName}"` });
+  }
+
+  // GET /api/flight-bookings/:id/cancellation (FLT-26): shown before the user confirms
+  @Get(':id/cancellation')
+  @ApiOperation({
+    summary: 'See the refund you would get if you cancelled now',
+    description: "Uses the airline's cancellation tiers (FLT-09) and the whole days left before the outbound departure.",
+  })
+  @ApiParam({ name: 'id', description: 'Booking id' })
+  @ApiOkResponse({ type: CancellationQuoteDto })
+  @ApiNotFoundResponse({ description: "Booking not found (also when it is someone else's)" })
+  cancellationQuote(@CurrentUser('id') userId: string, @Param('id') bookingId: string): Promise<CancellationQuoteDto> {
+    return this.flightBookingsService.cancellationQuote(userId, bookingId);
+  }
+
+  // POST /api/flight-bookings/:id/cancel (FLT-26, PAY-03)
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cancel your confirmed booking before departure and get the refund',
+    description:
+      'The booking becomes Cancelled, its seats return to sale, and the refund from the airline tiers is issued through ' +
+      'Stripe (see GET /api/refunds/:id for its status). Not possible after departure.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking id' })
+  @ApiOkResponse({ type: CancelFlightBookingResponseDto })
+  @ApiNotFoundResponse({ description: "Booking not found (also when it is someone else's)" })
+  @ApiConflictResponse({ description: 'Not Confirmed (pending, expired or already cancelled), or the flight has departed' })
+  cancel(@CurrentUser('id') userId: string, @Param('id') bookingId: string): Promise<CancelFlightBookingResponseDto> {
+    return this.flightBookingsService.cancel(userId, bookingId);
+  }
+
+  // PATCH /api/flight-bookings/:id/change-flight (FLT-27, optional)
+  @Patch(':id/change-flight')
+  @ApiOperation({
+    summary: 'Change the date or flight of your confirmed booking (same route, cabin and airline)',
+    description:
+      'Moves one flight of the booking (segmentIndex 0 = outbound, 1 = return) to another flight on the same route, in the ' +
+      'same cabin and with the same airline, for all passengers, subject to seat availability. A lower fare is applied at ' +
+      'once and the difference refunded (see GET /api/refunds/:id). A higher fare returns outcome "payment_required": the ' +
+      'new seats are held for 10 minutes and the change is applied only after Stripe confirms the difference was paid ' +
+      '(confirm it with payment.clientSecret, or send testPaymentMethod "pm_card_visa" to pay right away in test mode). ' +
+      'Until then the booking keeps its current flight. Prices are in cents.',
+  })
+  @ApiParam({ name: 'id', description: 'Booking id' })
+  @ApiOkResponse({ type: ChangeFlightResponseDto })
+  @ApiBadRequestResponse({
+    description:
+      'Invalid body, no return flight, same flight, different route or airline, cabin not on the new flight, round trip out ' +
+      'of order, passenger type would change, bags over the new flight limits, or testPaymentMethod with a live key',
+  })
+  @ApiNotFoundResponse({ description: "Booking or new flight not found (also when the booking is someone else's)" })
+  @ApiConflictResponse({
+    description:
+      'Booking not Confirmed, flight already departed, new flight not open, airline inactive, not enough seats, difference ' +
+      'below 0.50 USD, or the booking changed at the same time',
+  })
+  changeFlight(
+    @CurrentUser('id') userId: string,
+    @Param('id') bookingId: string,
+    @Body() dto: ChangeFlightDto,
+  ): Promise<ChangeFlightResponseDto> {
+    return this.flightBookingsService.changeFlight(userId, bookingId, dto);
   }
 }

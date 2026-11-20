@@ -45,6 +45,13 @@ export class Comment {
         index: true
     })
     parentCommentId: Types.ObjectId | null;
+
+    // GEN-10: hidden comments stay visible only to their author and admins
+    @Prop({
+        type: Boolean,
+        default: false
+    })
+    isHidden?: boolean;
 }
 
 export const CommentSchema = SchemaFactory.createForClass(Comment);

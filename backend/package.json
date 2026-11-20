@@ -41,7 +41,8 @@
     "nodemailer": "^6.10.1",
     "pdfkit": "^0.21.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "stripe": "^23.2.0"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",

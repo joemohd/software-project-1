@@ -183,25 +183,6 @@ export class Flight {
         Number.isFinite
     })
     maxBagWeight: number;
-
-    // TODO: Perform referential integrity checks in the backend application
-    @Prop({
-        type: Types.ObjectId,
-        ref: Flight.name
-    })
-    roundTripFlightId: Types.ObjectId;
-
-    // TODO: Perform referential integrity checks in the backend application
-    @Prop({
-        type: [Types.ObjectId],
-        ref: Flight.name,
-        default: [],
-        validate: {
-            validator: (ids: Types.ObjectId[]) => new Set(ids.map(id => id.toString())).size === ids.length,
-            message: 'Duplicate connecting flights are not allowed.'
-        }
-    })
-    connectingFlightIds: Types.ObjectId[];
 }
 
 export type FlightDocument = HydratedDocument<Flight>;
@@ -217,20 +198,6 @@ FlightSchema.pre('validate', function () {
         this.invalidate(
             'arrival.timestamp',
             'Arrival must be after departure'
-        );
-    }
-
-    if (this.roundTripFlightId && this.roundTripFlightId.equals(this._id)) {
-        this.invalidate(
-            'roundTripFlightId',
-            'A flight cannot be its own round trip'
-        );
-    }
-
-    if (this.connectingFlightIds?.some((flightId) => flightId.equals(this._id))) {
-        this.invalidate(
-            'connectingFlightIds',
-            'A flight cannot connect to itself'
         );
     }
 

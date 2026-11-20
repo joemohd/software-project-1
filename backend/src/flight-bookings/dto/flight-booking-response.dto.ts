@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { RefundResponseDto } from '../../payments/dto/payment.dto.js';
 import { BookingStatus, PassengerType } from '../../database/schemas/expense.schema.js';
 import { CabinType } from '../../database/schemas/flight.schema.js';
 
@@ -40,6 +41,16 @@ export class BookingPassengerResponseDto {
   @ApiProperty({ type: [PassengerSeatDto] }) seats: PassengerSeatDto[];
 }
 
+// FLT-27: a flight change waiting for its fare difference to be paid
+export class PendingFlightChangeDto {
+  @ApiProperty({ description: '0 = outbound, 1 = return', example: 0 }) segmentIndex: number;
+  @ApiProperty() flightId: string;
+  @ApiProperty({ description: 'Fare difference to pay in cents', example: 12000 }) amountDue: number;
+  @ApiProperty({ example: 'pi_3QxYzAbCdEf' }) paymentIntentId: string;
+  @ApiProperty({ example: 'requires_payment_method' }) paymentStatus: string;
+  @ApiProperty({ description: 'The new seats are released after this (UTC)' }) holdExpiresAt: string;
+}
+
 // FLT-21: booking summary shown before payment
 export class FlightBookingResponseDto {
   @ApiProperty() id: string;
@@ -53,6 +64,8 @@ export class FlightBookingResponseDto {
   @ApiProperty({ description: 'fareTotal + baggageFee in cents', example: 99500 }) total: number;
   @ApiProperty({ nullable: true, description: 'When the seat hold ends (UTC); pay before this', example: '2026-11-19T12:10:00.000Z' })
   holdExpiresAt: string | null;
+  @ApiProperty({ type: PendingFlightChangeDto, nullable: true, description: 'FLT-27: a change waiting for payment, or null' })
+  pendingChange: PendingFlightChangeDto | null;
 }
 
 // FLT-25: one page of one group
@@ -68,4 +81,25 @@ export class FlightBookingListResponseDto {
   @ApiProperty({ type: FlightBookingGroupPageDto }) upcoming: FlightBookingGroupPageDto;
   @ApiProperty({ type: FlightBookingGroupPageDto }) past: FlightBookingGroupPageDto;
   @ApiProperty({ type: FlightBookingGroupPageDto }) cancelled: FlightBookingGroupPageDto;
+}
+
+// FLT-26: what cancelling now would refund, shown before the user confirms
+export class CancellationQuoteDto {
+  @ApiProperty() bookingId: string;
+  @ApiProperty({ description: 'Whether the booking can be cancelled now' }) cancellable: boolean;
+  @ApiProperty({ nullable: true, type: String, description: 'Why it cannot be cancelled' }) reason: string | null;
+  @ApiProperty({ description: 'Amount paid in cents', example: 99500 }) totalPaid: number;
+  @ApiProperty({ description: 'Whole days left before the outbound departure', example: 12 }) daysBeforeDeparture: number;
+  @ApiProperty({ description: "From the airline's cancellation tiers (FLT-09)", example: 50 }) refundPercentage: number;
+  @ApiProperty({ description: 'Refund in cents', example: 49750 }) refundAmount: number;
+}
+
+// FLT-26, PAY-03: the cancelled booking and its refund
+export class CancelFlightBookingResponseDto {
+  @ApiProperty({ type: FlightBookingResponseDto }) booking: FlightBookingResponseDto;
+  @ApiProperty({ example: 50 }) refundPercentage: number;
+  @ApiProperty({ description: 'Refund in cents', example: 49750 }) refundAmount: number;
+  @ApiProperty({ type: RefundResponseDto, nullable: true, description: 'null when nothing is refunded' }) refund: RefundResponseDto | null;
+  @ApiProperty({ nullable: true, type: String, description: 'Set if the booking was cancelled but Stripe refused the refund' })
+  refundError: string | null;
 }

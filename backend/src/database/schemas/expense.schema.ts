@@ -83,18 +83,18 @@ export enum BookingStatus {
     CANCELLED = 'cancelled'
 }
 
-export enum CheckoutSessionStatus {
-    OPEN = 'open',
-    COMPLETE = 'complete',
-    EXPIRED = 'expired'
+// PAY-01: Stripe PaymentIntent statuses (https://docs.stripe.com/payments/paymentintents/lifecycle)
+export enum PaymentIntentStatus {
+    REQUIRES_PAYMENT_METHOD = 'requires_payment_method',
+    REQUIRES_CONFIRMATION = 'requires_confirmation',
+    REQUIRES_ACTION = 'requires_action',
+    PROCESSING = 'processing',
+    REQUIRES_CAPTURE = 'requires_capture',
+    CANCELED = 'canceled',
+    SUCCEEDED = 'succeeded'
 }
 
-export enum CheckoutPaymentStatus {
-    PAID = 'paid',
-    UNPAID = 'unpaid',
-    NO_PAYMENT_REQUIRED = 'no_payment_required'
-}
-
+// PAY-01: only the Stripe payment id, amount, currency and status are stored (never card details)
 @Schema({ _id: false })
 export class Payment {
     @Prop({
@@ -104,49 +104,37 @@ export class Payment {
         minlength: 1,
         maxlength: 255
     })
-    stripeCheckoutSessionId: string;
+    paymentIntentId: string;
 
+    // Integer cents
     @Prop({
         type: Number,
+        required: true,
         min: 0,
-        validate: Number.isSafeInteger,
-        default: null
+        validate: Number.isSafeInteger
     })
-    amountTotal: number | null;
+    amount: number;
 
-    // TODO: Perform referential integrity checks in the backend application
     @Prop({
         type: String,
+        required: true,
         lowercase: true,
         minlength: 3,
         maxlength: 3,
-        match: /^[a-z]{3}$/,
-        default: null
+        match: /^[a-z]{3}$/
     })
-    currency: string | null;
+    currency: string;
 
     @Prop({
         type: String,
-        enum: Object.values(CheckoutSessionStatus),
-        default: null
+        enum: Object.values(PaymentIntentStatus),
+        required: true
     })
-    status: CheckoutSessionStatus | null;
+    status: PaymentIntentStatus;
 
-    @Prop({
-        type: String,
-        enum: Object.values(CheckoutPaymentStatus),
-        default: null
-    })
-    paymentStatus: CheckoutPaymentStatus | null;
-
-    @Prop({ type: [String], default: [] })
-    paymentMethodTypes: string[];
-
-    @Prop({ type: String, default: null })
-    paymentIntentId: string | null;
-
-    @Prop({ type: Date, default: null })
-    expiresAt: Date | null;
+    // Why the last attempt failed (Stripe's message), shown so the user can retry
+    @Prop({ type: String, default: null, maxlength: 500 })
+    lastError: string | null;
 }
 
 @Schema({
@@ -156,6 +144,20 @@ export class Payment {
     minimize: true
 })
 export class Refund {
+    // PAY-03: the cancelled booking this refund belongs to, and its owner (for GET /api/refunds/:id)
+    @Prop({ type: Types.ObjectId, required: true, index: true })
+    bookingId: Types.ObjectId;
+
+    @Prop({ type: String, enum: ['flight', 'hotel'], required: true })
+    bookingType: 'flight' | 'hotel';
+
+    // FLT-27: set when the refund is for a flight change (lower fare); null for a cancellation refund
+    @Prop({ type: Types.ObjectId, default: null })
+    changeId: Types.ObjectId | null;
+
+    @Prop({ type: Types.ObjectId, ref: User.name, required: true, index: true })
+    userId: Types.ObjectId;
+
     @Prop({
         type: String,
         required: true,
@@ -231,7 +233,7 @@ export class Booking extends Expense {
     })
     status: BookingStatus;
 
-    // TODO: Get back to it after changing the Stripe API
+    // PAY-01: the Stripe PaymentIntent for this booking; null until the user starts paying
     @Prop({
         type: Payment,
         default: null
@@ -252,6 +254,15 @@ export class RoomBooking {
     })
     roomId: Types.ObjectId;
 
+    // HTL-16: integer cents, the room's price per night at booking time
+    @Prop({
+        type: Number,
+        min: 0,
+        validate: Number.isSafeInteger
+    })
+    pricePerNight: number;
+
+    // HTL-16: one age per guest; adults are stored as 18 (ADULT_AGE) because only children's ages (0-17) are asked for
     @Prop({
         type: [Number],
         required: true,
@@ -262,6 +273,69 @@ export class RoomBooking {
         }
     })
     guestAges: number[];
+}
+
+// HTL-26: a hotel moderator's reply to a review.
+@Schema({ _id: false })
+export class ReviewReply {
+    @Prop({
+        type: String,
+        required: true,
+        trim: true,
+        minlength: 1,
+        maxlength: 1000
+    })
+    text: string;
+
+    // TODO: Perform referential integrity checks in the backend application
+    @Prop({
+        type: Types.ObjectId,
+        ref: User.name,
+        required: true
+    })
+    moderatorId: Types.ObjectId;
+
+    @Prop({
+        type: Date,
+        required: true
+    })
+    repliedAt: Date;
+}
+
+// HTL-23 / HTL-24: the single review a user may leave for a Completed hotel
+// reservation. Stored as a sub-document on its HotelBooking (one review per
+// reservation). It carries its own _id so it can be addressed via /reviews/:id.
+@Schema({ _id: true, timestamps: true })
+export class HotelReview {
+    @Prop({
+        type: Number,
+        required: true,
+        min: 1,
+        max: 5,
+        validate: Number.isInteger
+    })
+    rating: number;
+
+    @Prop({
+        type: String,
+        trim: true,
+        maxlength: 1000,
+        default: ''
+    })
+    comment: string;
+
+    @Prop({
+        type: ReviewReply,
+        default: null
+    })
+    reply: ReviewReply | null;
+
+    // GEN-10: hidden reviews stay visible only to their author and admins
+    @Prop({
+        type: Boolean,
+        default: false
+    })
+    isHidden?: boolean;
 }
 
 @Schema({
@@ -287,6 +361,10 @@ export class HotelBooking extends Booking {
     })
     nightsCount: number;
 
+    // HTL-18: the rooms are held until this time while the user pays; null once Confirmed
+    @Prop({ type: Date, default: null })
+    holdExpiresAt: Date | null;
+
     @Prop({
         type: [RoomBooking],
         required: true,
@@ -299,6 +377,13 @@ export class HotelBooking extends Booking {
         }
     })
     rooms: RoomBooking[];
+
+    // HTL-23: the user's review for this reservation (null until reviewed).
+    @Prop({
+        type: HotelReview,
+        default: null
+    })
+    review: HotelReview | null;
 }
 
 export enum PassengerType {
@@ -411,6 +496,52 @@ export class FlightPassenger {
     extraBagWeights: number[];
 }
 
+// FLT-27: a change to another flight that costs more, waiting for the fare difference to be paid.
+// The new seats are held until holdExpiresAt; the booking keeps its current flight until the payment succeeds.
+@Schema({ _id: false })
+export class PendingFlightChange {
+    @Prop({ type: Types.ObjectId, required: true })
+    changeId: Types.ObjectId;
+
+    // 0 = outbound, 1 = return
+    @Prop({ type: Number, required: true, min: 0, max: 1, validate: Number.isInteger })
+    segmentIndex: number;
+
+    @Prop({ type: FlightSegment, required: true })
+    segment: FlightSegment;
+
+    // Integer cents: the booking's fare total once the change is applied
+    @Prop({ type: Number, required: true, min: 0, validate: Number.isSafeInteger })
+    fareTotal: number;
+
+    // Integer cents: the fare difference to pay
+    @Prop({ type: Number, required: true, min: 1, validate: Number.isSafeInteger })
+    amountDue: number;
+
+    @Prop({ type: String, required: true, maxlength: 255 })
+    paymentIntentId: string;
+
+    @Prop({ type: String, enum: Object.values(PaymentIntentStatus), required: true })
+    paymentStatus: PaymentIntentStatus;
+
+    @Prop({ type: String, default: null, maxlength: 500 })
+    lastError: string | null;
+
+    @Prop({ type: Date, required: true })
+    holdExpiresAt: Date;
+}
+
+// FLT-27: a fare difference paid for a flight change (its own Stripe PaymentIntent), kept so refunds can use it
+@Schema({ _id: false })
+export class ExtraPayment {
+    @Prop({ type: String, required: true, maxlength: 255 })
+    paymentIntentId: string;
+
+    // Integer cents
+    @Prop({ type: Number, required: true, min: 0, validate: Number.isSafeInteger })
+    amount: number;
+}
+
 @Schema({
     timestamps: true,
     strict: 'throw',
@@ -468,6 +599,14 @@ export class FlightBooking extends Booking {
 
     @Prop({ type: Date, default: null })
     holdExpiresAt: Date | null;
+
+    // FLT-27: a flight change waiting for its fare difference to be paid
+    @Prop({ type: PendingFlightChange, default: null })
+    pendingChange: PendingFlightChange | null;
+
+    // FLT-27: fare differences paid for flight changes
+    @Prop({ type: [ExtraPayment], default: [] })
+    extraPayments: ExtraPayment[];
 }
 
 @Schema({
@@ -585,6 +724,8 @@ export const TransportSchema = SchemaFactory.createForClass(Transport);
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 export const RefundSchema = SchemaFactory.createForClass(Refund);
 export const HotelBookingSchema = SchemaFactory.createForClass(HotelBooking);
+export const HotelReviewSchema = SchemaFactory.createForClass(HotelReview);
+export const ReviewReplySchema = SchemaFactory.createForClass(ReviewReply);
 export const FlightBookingSchema = SchemaFactory.createForClass(FlightBooking);
 export const BookingRoomSchema = SchemaFactory.createForClass(RoomBooking);
 export const FlightPassengerSchema = SchemaFactory.createForClass(FlightPassenger);
@@ -605,3 +746,7 @@ ActivityCategorySchema.index(
     { userId: 1, name: 1 },
     { unique: true }
 );
+
+// HTL-18: finding a room's overlapping reservations, and expiring overdue holds
+HotelBookingSchema.index({ 'rooms.roomId': 1, status: 1 });
+HotelBookingSchema.index({ status: 1, holdExpiresAt: 1 });

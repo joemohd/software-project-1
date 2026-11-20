@@ -13,8 +13,7 @@ export class PasswordResetToken {
     @Prop({
         type: Types.ObjectId,
         ref: User.name,
-        required: true,
-        index: true
+        required: true
     })
     userId: Types.ObjectId;
 
