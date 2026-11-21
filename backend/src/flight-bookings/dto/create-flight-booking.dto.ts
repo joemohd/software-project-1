@@ -50,14 +50,21 @@ export class BookingPassengerDto {
   @Matches(DATE_ONLY_PATTERN, { message: 'dateOfBirth must be a date like 1990-05-31' })
   dateOfBirth: string;
 
-  @ApiProperty({ description: 'Passport or national ID number, 5-20 letters and digits', example: 'A12345678' })
+  @ApiProperty({
+    description: 'Passport or national ID number, 5-20 letters and digits',
+    example: 'A12345678',
+    pattern: '^[A-Za-z0-9]{5,20}$',
+    minLength: 5,
+    maxLength: 20,
+  })
   @Transform(trim)
   @IsString()
   @Matches(PASSPORT_NUMBER_PATTERN, { message: 'passportNumber must be 5-20 letters and digits' })
   passportNumber: string;
 
   @ApiPropertyOptional({
-    description: "Weight in whole kg of each extra bag (count up to the airline's maximum, each up to the flight's maximum bag weight)",
+    description:
+      "Weight in whole kg of each extra bag (count up to the airline's maximum, each up to the booked cabin's free baggage weight allowance per FLT-08)",
     type: [Number],
     example: [20],
     default: [],

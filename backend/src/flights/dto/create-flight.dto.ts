@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -7,6 +7,7 @@ import {
   IsEnum,
   IsInt,
   IsMongoId,
+  IsOptional,
   IsString,
   Matches,
   Max,
@@ -37,8 +38,30 @@ export class CreateCabinDto {
   @Max(Number.MAX_SAFE_INTEGER)
   seatPrice: number;
 
+  @ApiPropertyOptional({
+    description: 'Total seat count in this cabin (whole number > 0, FLT-04); must match (lastRow - firstRow + 1) * seatsPerRow when provided',
+    example: 156,
+    minimum: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  seatCount?: number;
+
+  @ApiPropertyOptional({
+    description: 'Free baggage allowance in number of bags per passenger (whole number >= 0, FLT-04)',
+    example: 1,
+    minimum: 0,
+    default: 1,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  freeBagCount?: number;
+
   @ApiProperty({
-    description: "Free baggage allowance in whole kg (0 = none); can't exceed the flight's maxBagWeight",
+    description:
+      "Maximum weight per bag in whole kg for this cabin's free and extra baggage allowance (0 = none; FLT-04, FLT-08); can't exceed the flight's maxBagWeight",
     example: 23,
     minimum: 0,
     maximum: MAX_BAG_WEIGHT_KG,
@@ -63,6 +86,7 @@ export class CreateCabinDto {
   @ApiProperty({
     description: `Seat letters per row with "-" for each aisle (at most ${MAX_SEATS_PER_ROW} seats). Outer letters are window seats, letters next to "-" are aisle seats, the rest are middle.`,
     example: 'ABC-DEF',
+    pattern: SEAT_LAYOUT_PATTERN.source,
   })
   @IsString()
   @MaxLength(2 * MAX_SEATS_PER_ROW)
@@ -76,7 +100,7 @@ export class CreateFlightDto {
   @IsMongoId()
   airlineId: string;
 
-  @ApiProperty({ description: 'Flight number, 1-4 digits', example: '123' })
+  @ApiProperty({ description: 'Flight number, 1-4 digits (FLT-03)', example: '123', pattern: '^\\d{1,4}$', minLength: 1, maxLength: 4 })
   @IsString()
   @Matches(/^\d{1,4}$/, { message: 'number must be 1-4 digits' })
   number: string;

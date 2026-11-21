@@ -4,7 +4,6 @@ import {
   IsArray,
   IsEnum,
   IsInt,
-  IsNumber,
   IsOptional,
   Min,
   ValidateNested,
@@ -13,25 +12,29 @@ import { RoomStatus } from '../../database/schemas/provider.schema.js';
 import { DateRangeDto } from './date-range.dto.js';
 
 export class UpdateRoomDto {
-  @ApiPropertyOptional({ example: 1 })
+  @ApiPropertyOptional({ example: 1, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   bedCount?: number;
 
-  @ApiPropertyOptional({ example: 3 })
+  @ApiPropertyOptional({ example: 3, minimum: 1 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   maxOccupancy?: number;
 
-  @ApiPropertyOptional({ example: 175 })
+  @ApiPropertyOptional({
+    example: 17500,
+    minimum: 1,
+    description: 'Price per night in minor currency units (cents, > 0, HTL-05, PAY-04).',
+  })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0.01)
+  @IsInt()
+  @Min(1)
   pricePerNight?: number;
 
   @ApiPropertyOptional({

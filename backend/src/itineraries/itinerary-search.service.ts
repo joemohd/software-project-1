@@ -24,7 +24,7 @@ export class ItinerarySearchService {
     @InjectModel(Airport.name) private readonly airportModel: Model<Airport>,
     private readonly itineraries: ItinerariesService,
     private readonly presenter: ItineraryPresenter,
-  ) {}
+  ) { }
 
   // ITN-25: check-in = first day of the city group, check-out = the day after its last day
   async hotels(userId: string, itineraryId: string, query: ItineraryHotelsQueryDto): Promise<ItineraryHotelSearchDto> {
@@ -46,7 +46,7 @@ export class ItinerarySearchService {
       search: {
         method: 'GET',
         path: '/api/hotels/search',
-        query: { cityId: group.city.id, checkIn, checkOut, guests: query.guests, rooms: query.rooms },
+        query: { city: group.city.name, checkIn, checkOut, guests: query.guests, rooms: query.rooms },
       },
     };
   }
@@ -105,15 +105,14 @@ export class ItinerarySearchService {
         method: 'GET',
         path: '/api/flights/search',
         query: {
-          from: origin.iataCode,
-          to: destination.iataCode,
-          tripType: query.tripType,
+          departureAirportId: origin._id.toString(),
+          arrivalAirportId: destination._id.toString(),
           departureDate: outboundDate,
           ...(returnDate ? { returnDate } : {}),
           adults: query.adults,
           children: query.children,
           infants: query.infants,
-          ...(query.cabinClass ? { cabinClass: query.cabinClass } : {}),
+          ...(query.cabinClass ? { cabin: query.cabinClass } : {}),
         },
       })),
     };

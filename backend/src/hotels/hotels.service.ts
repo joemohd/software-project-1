@@ -39,7 +39,7 @@ export class HotelsService {
     @InjectModel(City.name) private readonly cityModel: Model<City>,
     @InjectModel(Country.name) private readonly countryModel: Model<Country>,
     @InjectConnection() private readonly connection: Connection,
-  ) {}
+  ) { }
 
   async create(admin: AuthenticatedUser, dto: CreateHotelDto): Promise<HotelProfileDto> {
     if (admin.role !== UserRole.ADMIN) throw new ForbiddenException('Administrator access is required.');
@@ -91,8 +91,10 @@ export class HotelsService {
     const rooms = await this.roomModel.find({ hotelId: hotel._id, status: RoomStatus.ACTIVE }).exec();
     const bookings = await this.protectedBookingsForRooms(rooms.map((room) => room._id));
     const roomTypes = await this.roomTypesForHotel(hotel._id);
-    return { ...details, checkIn: stay.startDate, checkOut: stay.endDate,
-      availableRooms: rooms.filter((room) => this.isBookable(room, stay, bookings)).map((room) => this.roomResponse(room, roomTypes.get(room.roomTypeId.toString()) ?? null)) };
+    return {
+      ...details, checkIn: stay.startDate, checkOut: stay.endDate,
+      availableRooms: rooms.filter((room) => this.isBookable(room, stay, bookings)).map((room) => this.roomResponse(room, roomTypes.get(room.roomTypeId.toString()) ?? null))
+    };
   }
 
   async createRoom(hotelId: string, user: AuthenticatedUser, dto: CreateRoomDto) {
@@ -102,8 +104,10 @@ export class HotelsService {
     const roomType = await this.roomTypeModel.findOneAndUpdate({ hotelId: hotel._id, name: typeName },
       { $setOnInsert: { hotelId: hotel._id, name: typeName } }, { new: true, upsert: true, setDefaultsOnInsert: true }).exec();
     try {
-      const room = await this.roomModel.create({ hotelId: hotel._id, number: dto.number, roomTypeId: roomType._id, bedCount: dto.bedCount,
-        maxOccupancy: dto.maxOccupancy, pricePerNight: dto.pricePerNight, availability: [], blockedDates: [], status: RoomStatus.ACTIVE });
+      const room = await this.roomModel.create({
+        hotelId: hotel._id, number: dto.number, roomTypeId: roomType._id, bedCount: dto.bedCount,
+        maxOccupancy: dto.maxOccupancy, pricePerNight: dto.pricePerNight, availability: [], blockedDates: [], status: RoomStatus.ACTIVE
+      });
       return this.roomResponse(room, roomType.name);
     } catch (error) { if (isDuplicateKeyError(error)) throw new ConflictException('A room with this number already exists in this hotel.'); throw error; }
   }
@@ -143,10 +147,13 @@ export class HotelsService {
     const hotel = await this.findOwnedHotelOrThrow(hotelId, user); const period = this.parseRange(query);
     const rooms = await this.roomModel.find({ hotelId: hotel._id }).exec(); const bookings = await this.protectedBookingsForRooms(rooms.map((room) => room._id));
     const roomTypes = await this.roomTypesForHotel(hotel._id);
-    return { hotelId: hotel._id.toString(), startDate: period.startDate, endDate: period.endDate, rooms: rooms.map((room) => {
-      const booking = this.bookingOverlappingRoom(room._id, period, bookings); const bookable = this.isBookable(room, period, bookings);
-      return { ...this.roomResponse(room, roomTypes.get(room.roomTypeId.toString()) ?? null), availabilityStatus: booking ? 'booked' : bookable ? 'available' : 'blocked', reservationReference: booking?._id.toString() ?? null, deactivated: room.status === RoomStatus.DEACTIVATED };
-    }) };
+    return {
+      hotelId: hotel._id.toString(), startDate: period.startDate, endDate: period.endDate, rooms: rooms.map((room) => {
+        const booking = this.bookingOverlappingRoom(room._id, period, bookings); const bookable = this.isBookable(room, period, bookings);
+        const availabilityStatus: 'available' | 'booked' | 'blocked' = booking ? 'booked' : bookable ? 'available' : 'blocked';
+      return { ...this.roomResponse(room, roomTypes.get(room.roomTypeId.toString()) ?? null), availabilityStatus, reservationReference: booking?._id.toString() ?? null, deactivated: room.status === RoomStatus.DEACTIVATED };
+      })
+    };
   }
 
   async updatePolicies(hotelId: string, user: AuthenticatedUser, dto: UpdateHotelPoliciesDto) {

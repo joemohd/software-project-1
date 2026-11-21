@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CabinType, FlightStatus } from '../../database/schemas/flight.schema.js';
 
 // FLT-03: departure or arrival, in UTC and in the airport's local time
@@ -24,7 +24,10 @@ export class CabinSummaryDto {
   @ApiProperty({ description: 'Cents', example: 45000 })
   seatPrice: number;
 
-  @ApiProperty({ description: 'kg', example: 23 })
+  @ApiPropertyOptional({ description: 'Free baggage allowance in number of bags (FLT-04)', example: 1, minimum: 0 })
+  freeBagCount?: number;
+
+  @ApiProperty({ description: 'Max weight per bag in kg (free and extra bags, FLT-04, FLT-08)', example: 23 })
   freeBagWeight: number;
 
   @ApiProperty({ example: 156 })

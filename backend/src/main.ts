@@ -11,6 +11,9 @@ async function bootstrap() {
     // rawBody: the Stripe webhook (PAY-01) checks its signature against the exact bytes Stripe sent
     const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
+    // Cleanly close the HTTP server, Mongoose connection and background sweepers on SIGTERM/SIGINT (e.g. nest start --watch restarts)
+    app.enableShutdownHooks();
+
     app.setGlobalPrefix('api');
 
     // Authentication cookies are HttpOnly

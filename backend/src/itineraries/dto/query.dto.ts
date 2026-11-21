@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsDateString,
+  IsEnum,
   IsIn,
   IsInt,
   IsMongoId,
@@ -12,13 +13,30 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { CabinType } from '../../database/schemas/flight.schema.js';
 import { ITINERARY_MAX_DAYS, SEARCH_MAX_LENGTH } from '../itineraries.constants.js';
 import { ItineraryPageQueryDto } from './pagination-query.dto.js';
 import { TrimString, UpperCode } from './transforms.js';
 
+const normalizeCabinClass = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  const match = Object.values(CabinType).find((c) => c.toLowerCase() === trimmed.toLowerCase());
+  return match ?? trimmed;
+};
+
 // ITN-18: optional display currency; defaults to the user's preferred currency
 export class BudgetSummaryQueryDto {
   @ApiPropertyOptional({ example: 'EGP', description: "Defaults to your profile's preferred currency." })
+  @IsOptional()
+  @UpperCode()
+  @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter currency code' })
+  currency?: string;
+}
+
+// ITN-21: optional display currency on public itinerary view; defaults to USD
+export class PublicItineraryQueryDto {
+  @ApiPropertyOptional({ example: 'EGP', description: 'Display currency (ISO 4217 code); defaults to USD.' })
   @IsOptional()
   @UpperCode()
   @Matches(/^[A-Z]{3}$/, { message: 'currency must be a 3-letter currency code' })
@@ -126,9 +144,13 @@ export class ItineraryFlightsQueryDto {
   @Min(0)
   infants: number = 0;
 
-  @ApiPropertyOptional({ example: 'economy' })
+  @ApiPropertyOptional({
+    enum: CabinType,
+    example: CabinType.ECONOMY,
+    description: 'Optional cabin class filter (Economy, Premium Economy, Business, First; FLT-12).',
+  })
   @IsOptional()
-  @IsString()
-  @MaxLength(30)
-  cabinClass?: string;
+  @Transform(({ value }) => normalizeCabinClass(value))
+  @IsEnum(CabinType)
+  cabinClass?: CabinType;
 }

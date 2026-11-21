@@ -5,7 +5,6 @@ import {
   ApiConflictResponse,
   ApiCookieAuth,
   ApiCreatedResponse,
-  ApiExcludeEndpoint,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -84,6 +83,7 @@ export class PaymentsController {
 // POST /api/payments/webhook (PAY-01): called by Stripe, not by users, so it has no login and no role check.
 // The Stripe signature proves where the request came from. Kept in its own controller because PaymentsController
 // requires the user role.
+@ApiTags('Payments')
 @Controller('payments')
 export class PaymentsWebhookController {
   constructor(private readonly paymentsService: PaymentsService) {}
@@ -91,7 +91,13 @@ export class PaymentsWebhookController {
   @Post('webhook')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiExcludeEndpoint()
+  @ApiOperation({
+    summary: 'Stripe webhook for payment and refund events (PAY-01)',
+    description:
+      'Verifies the Stripe-Signature header against the raw request body and updates payment, booking and refund statuses.',
+  })
+  @ApiOkResponse({ description: 'Webhook event verified and processed' })
+  @ApiBadRequestResponse({ description: 'Missing or invalid Stripe signature' })
   webhook(@Req() request: RawBodyRequest<Request>, @Headers('stripe-signature') signature?: string): Promise<{ received: true }> {
     return this.paymentsService.handleWebhook(request.rawBody, signature);
   }

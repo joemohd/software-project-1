@@ -102,9 +102,9 @@ export class FlightsController {
   // PATCH /api/flights/:id (FLT-05)
   @Patch(':id')
   @ApiOperation({
-    summary: 'Change departure/arrival times (and airports, until a seat is held or booked)',
+    summary: 'Change departure/arrival times (and airports, until a seat is held or booked) (FLT-05)',
     description:
-      'Local times as on creation. Changing an airport also needs that side\'s local time. A side whose time is not sent keeps its stored time.',
+      "Local times as on creation. Changing an airport also needs that side's local time. A side whose time is not sent keeps its stored time. Any departure or arrival time change sends an in-app notification (GEN-01) and SMTP email notification (GEN-01-B) to passengers with Confirmed bookings (FLT-05).",
   })
   @ApiParam({ name: 'id', description: 'Flight id' })
   @ApiOkResponse({ type: FlightResponseDto })
@@ -128,8 +128,9 @@ export class FlightsController {
   @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Cancel a Scheduled flight',
-    description: 'Sets the status to cancelled (hidden from search) and releases all held seats, in one atomic update.',
+    summary: 'Cancel a Scheduled flight (FLT-06)',
+    description:
+      'Sets the status to cancelled (hidden from search), releases all pending seat holds and expires Pending Payment bookings, transitions all Confirmed bookings on this flight to Cancelled with a 100% refund via Stripe (PAY-03), and sends in-app (GEN-01) and SMTP email (GEN-01-B) notifications to affected passengers.',
   })
   @ApiParam({ name: 'id', description: 'Flight id' })
   @ApiOkResponse({ type: FlightResponseDto })

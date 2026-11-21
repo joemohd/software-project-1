@@ -1,7 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiCookieAuth, ApiForbiddenResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { UserRole } from '../database/schemas/user.schema.js';
-import { ACCESS_TOKEN_COOKIE } from '../auth/auth.helper.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 
 /**
@@ -11,7 +10,7 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 export const TravelerOnly = () =>
   applyDecorators(
     Roles(UserRole.USER),
-    ApiCookieAuth(ACCESS_TOKEN_COOKIE),
+    ApiCookieAuth(),
     ApiUnauthorizedResponse({ description: 'Not logged in.' }),
     ApiForbiddenResponse({ description: 'Only registered users (travelers) manage itineraries.' }),
   );

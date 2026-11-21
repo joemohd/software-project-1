@@ -47,8 +47,8 @@ export class FlightBookingsController {
       'One segment = one-way, two = round trip (outbound first; the return flies the reverse route after the outbound lands). ' +
       'Passenger types come from the date of birth on the outbound departure date: adult 12+, child 2-11, infant under 2 ' +
       '(no seat, 10% of the seat price). At least one adult, no more infants than adults. Extra bags: up to the airline\'s ' +
-      "maximum per passenger, each up to the flight's maximum bag weight, charged per flight. The booking is saved as " +
-      'Pending Payment and expires if not paid before holdExpiresAt. Prices are in cents. ' +
+      "maximum per passenger, each up to the booked cabin's free baggage weight allowance (FLT-08), charged per flight. The booking is saved as " +
+      'Pending Payment and expires if not paid before holdExpiresAt. Before paying, view and accept policies via GET/POST /api/bookings/flight/:id/policies and /accept-policies (PAY-02). Prices are in cents. ' +
       'The reference is null until the booking is Confirmed.',
   })
   @ApiCreatedResponse({ type: FlightBookingResponseDto, description: 'Booking summary (FLT-21)' })

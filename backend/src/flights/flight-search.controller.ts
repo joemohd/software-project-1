@@ -1,7 +1,11 @@
-import { Controller, Get, Query } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiBadRequestResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import { Public } from '../auth/decorators/public.decorator.js';
-import { SearchFlightsQueryDto, SearchFlightsResponseDto } from './dto/search-flights.dto.js';
+import {
+  FlightDetailsResponseDto,
+  SearchFlightsQueryDto,
+  SearchFlightsResponseDto,
+} from './dto/search-flights.dto.js';
 import { FlightSearchService } from './flight-search.service.js';
 
 @ApiTags('Flights')
@@ -24,5 +28,20 @@ export class FlightSearchController {
   })
   search(@Query() query: SearchFlightsQueryDto): Promise<SearchFlightsResponseDto> {
     return this.flightSearchService.search(query);
+  }
+
+  // GET /api/flights/:id (FLT-17)
+  @Public()
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Get flight details with cabins, seats remaining, baggage allowance and cancellation policy (FLT-17)',
+    description:
+      'Shows airline profile, flight number, departure and arrival airports with local times and time zones, flight duration, each cabin category with price, seats remaining, baggage allowance and seat map, and the airline baggage and cancellation policies.',
+  })
+  @ApiParam({ name: 'id', description: 'Flight id' })
+  @ApiOkResponse({ type: FlightDetailsResponseDto })
+  @ApiNotFoundResponse({ description: 'Flight not found or airline deactivated' })
+  getFlightDetails(@Param('id') flightId: string): Promise<FlightDetailsResponseDto> {
+    return this.flightSearchService.getFlightDetails(flightId);
   }
 }

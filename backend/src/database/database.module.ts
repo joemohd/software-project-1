@@ -53,6 +53,7 @@ import {
 import { TouristAttraction, TouristAttractionSchema } from './schemas/tourist-attraction.schema.js';
 import { User, UserSchema } from './schemas/user.schema.js';
 import { AuditLog, AuditLogSchema } from './schemas/audit-log.schema.js';
+import { Notification, NotificationSchema } from './schemas/notification.schema.js';
 import { Report, ReportSchema } from './schemas/report.schema.js';
 
 const mongooseConfig = (config: ConfigService) => ({
@@ -62,6 +63,7 @@ const mongooseConfig = (config: ConfigService) => ({
 const databaseModels = [
     { name: ActivityCategory.name, schema: ActivityCategorySchema },
     { name: AuditLog.name, schema: AuditLogSchema },
+    { name: Notification.name, schema: NotificationSchema },
     { name: Report.name, schema: ReportSchema },
     {
         name: Expense.name, schema: ExpenseSchema, discriminators: [

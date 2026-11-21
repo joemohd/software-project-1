@@ -3,14 +3,20 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { isValidObjectId, Model, Types } from 'mongoose';
 import { Airport } from '../database/schemas/airport.schema.js';
 import { City } from '../database/schemas/city.schema.js';
+import { BookingStatus, FlightBooking } from '../database/schemas/expense.schema.js';
 import { Cabin, Flight, FlightStatus, Seat, SeatAvailability } from '../database/schemas/flight.schema.js';
+import { NotificationType } from '../database/schemas/notification.schema.js';
 import { ProviderStatus } from '../database/schemas/provider.schema.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import { RefundsService } from '../payments/refunds.service.js';
 import { AirlinesService } from './airlines.service.js';
 import {
   assertNoRowOverlap,
@@ -45,11 +51,16 @@ const flightChangedError = () =>
 
 @Injectable()
 export class FlightsService {
+  private readonly logger = new Logger(FlightsService.name);
+
   constructor(
     @InjectModel(Flight.name) private readonly flightModel: Model<Flight>,
     @InjectModel(Airport.name) private readonly airportModel: Model<Airport>,
     @InjectModel(City.name) private readonly cityModel: Model<City>,
     private readonly airlinesService: AirlinesService,
+    @Optional() @InjectModel(FlightBooking.name) private readonly bookingModel?: Model<FlightBooking>,
+    @Optional() private readonly refundsService?: RefundsService,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
 
   // FLT-03 (with its FLT-04 cabins): a moderator creates a Scheduled flight for their own active airline
@@ -158,15 +169,21 @@ export class FlightsService {
     }
     if (!updated) throw flightChangedError();
 
-    // TODO(FLT-05): if a time changed, send an in-app notification to passengers with Confirmed bookings
-    // (GEN-01/NEW-02; notifications are not built yet).
+    // FLT-05, GEN-01, GEN-01-B: if a departure or arrival time changed, notify passengers with Confirmed bookings
+    const timeChanged =
+      departureAt.getTime() !== flight.departure.timestamp.getTime() ||
+      arrivalAt.getTime() !== flight.arrival.timestamp.getTime();
+    if (timeChanged) {
+      await this.notifyConfirmedPassengersOfTimeChange(updated, zones);
+    }
 
     return toFlightResponse(updated, zones.departure, zones.arrival);
   }
 
   /**
-   * FLT-06: cancel a Scheduled flight. In one atomic update the status becomes cancelled (so search hides it) and
-   * every held seat goes back to available. Booked seats stay booked, as a record of the cancelled bookings.
+   * FLT-06: cancel a Scheduled flight. Sets the flight status to cancelled (hidden from search), releases all held
+   * seats and expires Pending Payment bookings, cancels all Confirmed bookings on this flight with a 100% refund
+   * through Stripe (PAY-03), and sends in-app and SMTP email notifications to affected passengers (GEN-01, GEN-01-B).
    */
   async cancel(flightId: string, moderatorId: string): Promise<FlightResponseDto> {
     const flight = await this.findEditableFlight(flightId, moderatorId);
@@ -187,12 +204,112 @@ export class FlightsService {
       .exec();
     if (!cancelled) throw flightChangedError();
 
-    // TODO(FLT-06): when the FlightBooking schema is ready, in the same flow:
-    //  - set this flight's Confirmed bookings to Cancelled with a 100% refund (PAY-03),
-    //  - expire its Pending Payment bookings (their seat holds were released above),
-    //  - send passengers an in-app notification (GEN-01/NEW-02).
+    await this.handleCancelledFlightBookings(cancelled);
 
     return this.toResponse(cancelled);
+  }
+
+  /** FLT-05, GEN-01, GEN-01-B: notifies passengers with Confirmed bookings when flight departure/arrival times change. */
+  private async notifyConfirmedPassengersOfTimeChange(
+    flight: FlightRecord,
+    zones: { departure: string; arrival: string },
+  ): Promise<void> {
+    if (!this.bookingModel || !this.notificationsService) return;
+    const bookings = await this.bookingModel
+      .find({ status: BookingStatus.CONFIRMED, 'segments.flightId': flight._id })
+      .select('userId reference name')
+      .lean<{ _id: Types.ObjectId; userId: Types.ObjectId; reference?: string; name?: string }[]>()
+      .exec();
+
+    const newDepLocal = utcToLocal(flight.departure.timestamp, zones.departure);
+    const newArrLocal = utcToLocal(flight.arrival.timestamp, zones.arrival);
+    for (const booking of bookings) {
+      await this.notificationsService.create({
+        userId: booking.userId,
+        type: NotificationType.FLIGHT_SCHEDULE_CHANGED,
+        title: `Schedule updated for flight ${flight.number}`,
+        message: `Your confirmed booking ${booking.reference ?? booking._id.toString()} (${booking.name ?? `Flight ${flight.number}`}) has an updated schedule: departure ${newDepLocal} (${zones.departure}), arrival ${newArrLocal} (${zones.arrival}).`,
+        metadata: {
+          flightId: flight._id.toString(),
+          bookingId: booking._id.toString(),
+          reference: booking.reference ?? null,
+          departureLocalTime: newDepLocal,
+          arrivalLocalTime: newArrLocal,
+        },
+      });
+    }
+  }
+
+  /**
+   * FLT-06, PAY-03, GEN-01, GEN-01-B: expires Pending Payment holds on the cancelled flight and cancels all
+   * Confirmed bookings on it with a 100% refund and in-app/email notification.
+   */
+  private async handleCancelledFlightBookings(flight: FlightRecord): Promise<void> {
+    if (!this.bookingModel) return;
+
+    await this.bookingModel
+      .updateMany(
+        { status: BookingStatus.PENDING_PAYMENT, 'segments.flightId': flight._id },
+        { $set: { status: BookingStatus.EXPIRED, holdExpiresAt: null } },
+      )
+      .exec();
+
+    const confirmedBookings = await this.bookingModel
+      .find({ status: BookingStatus.CONFIRMED, 'segments.flightId': flight._id })
+      .lean<
+        (FlightBooking & {
+          _id: Types.ObjectId;
+        })[]
+      >()
+      .exec();
+
+    for (const booking of confirmedBookings) {
+      const updated = await this.bookingModel
+        .findOneAndUpdate(
+          { _id: booking._id, status: BookingStatus.CONFIRMED },
+          { $set: { status: BookingStatus.CANCELLED, pendingChange: null } },
+          { returnDocument: 'after' },
+        )
+        .lean<FlightBooking & { _id: Types.ObjectId }>()
+        .exec();
+      if (!updated) continue;
+
+      if (this.refundsService && updated.payment?.paymentIntentId) {
+        const sources = [
+          { paymentIntentId: updated.payment.paymentIntentId, amount: updated.payment.amount },
+          ...(updated.extraPayments ?? []),
+        ];
+        const totalPaid = sources.reduce((sum, s) => sum + s.amount, 0);
+        if (totalPaid > 0) {
+          try {
+            await this.refundsService.issueAcross(
+              { bookingId: updated._id, bookingType: 'flight', userId: updated.userId },
+              sources,
+              totalPaid,
+            );
+          } catch (error) {
+            this.logger.error(
+              `100% refund for flight-cancelled booking ${updated._id.toString()} failed: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
+
+      if (this.notificationsService) {
+        await this.notificationsService.create({
+          userId: updated.userId,
+          type: NotificationType.FLIGHT_CANCELLED,
+          title: `Flight ${flight.number} cancelled — 100% refund issued`,
+          message: `Flight ${flight.number} on your booking ${updated.reference ?? updated._id.toString()} has been cancelled by the airline. Your booking is now Cancelled and a 100% refund has been initiated.`,
+          metadata: {
+            flightId: flight._id.toString(),
+            bookingId: updated._id.toString(),
+            reference: updated.reference ?? null,
+            refundPercentage: 100,
+          },
+        });
+      }
+    }
   }
 
   // FLT-04: add a cabin type the flight doesn't have yet (same seat generation and row rules as on creation)
@@ -467,6 +584,7 @@ export function toFlightResponse(flight: FlightRecord, departureZone: string, ar
     cabins: flight.cabins.map((cabin) => ({
       name: cabin.name,
       seatPrice: cabin.seatPrice,
+      ...(cabin.freeBagCount !== undefined ? { freeBagCount: cabin.freeBagCount } : {}),
       freeBagWeight: cabin.freeBagWeight,
       seatCount: cabin.seats.length,
       availableSeats: cabin.seats.filter((seat) => seat.availability === SeatAvailability.AVAILABLE).length,

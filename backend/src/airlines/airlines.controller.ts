@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { ApiBadRequestResponse, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
+import { ApiBadRequestResponse, ApiConflictResponse, ApiCookieAuth, ApiCreatedResponse, ApiForbiddenResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import { Public } from '../auth/decorators/public.decorator.js';
@@ -14,7 +14,7 @@ import { UpdateAirlineDto } from './dto/update-airline.dto.js';
 @ApiTags('Airlines')
 @Controller('airlines')
 export class AirlinesController {
-  constructor(private readonly airlinesService: AirlinesService) {}
+  constructor(private readonly airlinesService: AirlinesService) { }
 
   @Post()
   @Roles(UserRole.ADMIN)
@@ -32,6 +32,7 @@ export class AirlinesController {
   @Get(':id')
   @Public()
   @ApiOperation({ summary: 'Get an active airline profile (FLT-01)' })
+  @ApiParam({ name: 'id', description: 'Airline ObjectId' })
   @ApiOkResponse({ type: AirlineProfileDto })
   @ApiBadRequestResponse({ description: 'Invalid airline id' })
   @ApiNotFoundResponse({ description: 'Airline not found or deactivated' })
@@ -43,6 +44,7 @@ export class AirlinesController {
   @Roles(UserRole.AIRLINE_MODERATOR)
   @ApiCookieAuth()
   @ApiOperation({ summary: 'Edit your assigned airline profile (FLT-01)' })
+  @ApiParam({ name: 'id', description: 'Airline ObjectId' })
   @ApiOkResponse({ type: AirlineProfileDto })
   @ApiBadRequestResponse({ description: 'Invalid id, invalid fields or empty update' })
   @ApiConflictResponse({ description: 'Airline code already exists' })

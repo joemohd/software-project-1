@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { HotelBookingsController } from './hotel-bookings.controller.js';
 import { ReviewsController } from './reviews.controller.js';
 import { HotelBookingsService } from './hotel-bookings.service.js';
@@ -19,9 +20,10 @@ import { StripeModule } from '../payments/stripe.module.js';
   imports: [
     DatabaseModule,
     StripeModule,
+    NotificationsModule,
   ],
   controllers: [HotelBookingController, HotelBookingsController, ReviewsController],
   providers: [HotelBookingsService, HotelBookingService, HotelHoldExpirySweeper],
   exports: [HotelBookingsService],
 })
-export class HotelBookingsModule {}
+export class HotelBookingsModule { }

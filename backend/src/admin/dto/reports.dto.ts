@@ -1,8 +1,41 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsMongoId, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsEnum, IsInt, IsMongoId, IsNotEmpty, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 import { ModeratedContentType, ReportResolution, ReportStatus } from '../../database/schemas/report.schema.js';
 import { AuditActorDto } from './list-audit-logs.dto.js';
+
+const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
+
+// GEN-09: body for POST /api/reports
+export class CreateReportDto {
+  @ApiProperty({
+    enum: ModeratedContentType,
+    example: ModeratedContentType.POST,
+    description: 'Type of content being reported (post, comment, review or itinerary, GEN-09)',
+  })
+  @IsEnum(ModeratedContentType)
+  targetType: ModeratedContentType;
+
+  @ApiProperty({
+    description: 'Id of the post, comment, review or itinerary being reported (GEN-09)',
+    example: '665f1c2e9b1e8a0012345682',
+  })
+  @IsMongoId()
+  targetId: string;
+
+  @ApiProperty({
+    description: 'Reason for reporting the content (non-empty, max 1000 characters, GEN-09)',
+    example: 'Contains spam and misleading links.',
+    minLength: 1,
+    maxLength: 1000,
+  })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(1)
+  @MaxLength(1000)
+  reason: string;
+}
 
 // GEN-09, GEN-10: query for GET /api/admin/reports (defaults to open reports)
 export class ListReportsQueryDto {

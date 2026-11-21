@@ -327,4 +327,39 @@ describe('FlightSearchService (FLT-11, FLT-12, FLT-15)', () => {
       }),
     ).rejects.toThrow(new BadRequestException('Departure and arrival airports must be different.'));
   });
+
+  it('returns flight details with cabins, seats remaining, baggage allowance and policies (FLT-17)', async () => {
+    flightModel.findById = vi.fn(() => chainQuery(outboundFlight));
+    airlineModel.find = vi.fn(() =>
+      chainQuery([
+        {
+          _id: airlineId,
+          name: 'EgyptAir',
+          iataCode: 'MS',
+          logoUrl: 'https://example.com/ms.png',
+          status: ProviderStatus.ACTIVE,
+          bagPolicy: { priceExtraBag: 5000, maxExtraBagCount: 2 },
+          cancellationPolicies: [{ daysBeforeService: { startDay: 7, endDay: null }, refundPercentage: 80 }],
+        },
+      ]),
+    );
+
+    const details = await service.getFlightDetails(outboundFlightId.toString());
+    expect(details).toMatchObject({
+      id: outboundFlightId.toString(),
+      number: '777',
+      durationMinutes: 330,
+      baggagePolicy: { priceExtraBag: 5000, maxExtraBagCount: 2 },
+      cancellationPolicy: [{ daysBeforeDeparture: 7, refundPercentage: 80 }],
+    });
+    expect(details.cabins[0]).toMatchObject({
+      name: CabinType.ECONOMY,
+      seatPrice: 30000,
+      freeBagCount: 1,
+      freeBagWeight: 23,
+      seatCount: 5,
+      availableSeats: 3,
+    });
+    expect(details.cabins[0].seats).toHaveLength(5);
+  });
 });

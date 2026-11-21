@@ -1,6 +1,5 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiCookieAuth, ApiUnauthorizedResponse } from '@nestjs/swagger';
-import { ACCESS_TOKEN_COOKIE } from '../auth/auth.helper.js';
 
 /**
  * Swagger only: marks a route as needing the login cookie.
@@ -8,6 +7,6 @@ import { ACCESS_TOKEN_COOKIE } from '../auth/auth.helper.js';
  */
 export const LoginRequired = () =>
   applyDecorators(
-    ApiCookieAuth(ACCESS_TOKEN_COOKIE),
+    ApiCookieAuth(),
     ApiUnauthorizedResponse({ description: 'Not logged in.' }),
   );

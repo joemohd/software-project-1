@@ -15,6 +15,7 @@ import { HotelBookingsModule } from './hotel-bookings/hotel-bookings.module.js';
 import { AirlinesModule } from './airlines/airlines.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { ItinerariesModule } from './itineraries/itineraries.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ItinerariesModule } from './itineraries/itineraries.module.js';
     AirlinesModule,
     PaymentsModule,
     ItinerariesModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

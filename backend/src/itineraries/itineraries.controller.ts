@@ -44,6 +44,7 @@ import {
   BudgetSummaryQueryDto,
   ItineraryFlightsQueryDto,
   ItineraryHotelsQueryDto,
+  PublicItineraryQueryDto,
   PublicSearchQueryDto,
 } from './dto/query.dto.js';
 import { CreateTransportCostDto } from './dto/transport-cost.dto.js';
@@ -66,7 +67,7 @@ export class ItinerariesController {
     private readonly budgetSummaryService: BudgetSummaryService,
     private readonly searchService: ItinerarySearchService,
     private readonly pdfService: ItineraryPdfService,
-  ) {}
+  ) { }
 
   // ---- public (guests allowed) ----
 
@@ -97,7 +98,7 @@ export class ItinerariesController {
   @ApiServiceUnavailableResponse({ description: 'Exchange rates unavailable and none cached.' })
   async viewPublic(
     @Param('id') itineraryId: string,
-    @Query() query: BudgetSummaryQueryDto,
+    @Query() query: PublicItineraryQueryDto,
   ): Promise<PublicItineraryDto> {
     return this.publicService.view(itineraryId, await this.budgetSummaryService.resolveCurrency(query.currency));
   }

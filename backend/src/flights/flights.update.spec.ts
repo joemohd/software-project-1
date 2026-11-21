@@ -215,5 +215,55 @@ describe('FlightsService update and cancel (FLT-05, FLT-06)', () => {
 
       await expect(service.cancel(flightId.toString(), moderatorId)).rejects.toThrow(/changed while saving/);
     });
+
+    it('cancels confirmed bookings with a 100% refund, expires pending holds, and notifies passengers (FLT-06)', async () => {
+      const bookingId = new Types.ObjectId();
+      const userId = new Types.ObjectId();
+      const confirmedBooking = {
+        _id: bookingId,
+        userId,
+        reference: 'K7M2QX',
+        status: 'confirmed',
+        payment: { paymentIntentId: 'pi_123', amount: 45000 },
+        extraPayments: [],
+      };
+      const bookingModel = {
+        updateMany: vi.fn().mockReturnValue(query({ modifiedCount: 1 })),
+        find: vi.fn().mockReturnValue(query([confirmedBooking])),
+        findOneAndUpdate: vi.fn().mockReturnValue(query({ ...confirmedBooking, status: 'cancelled' })),
+      };
+      const refundsService = { issueAcross: vi.fn().mockResolvedValue([]) };
+      const notificationsService = { create: vi.fn().mockResolvedValue({}) };
+      const airportModel = { find: vi.fn().mockReturnValue(query([cai, jfk, lhr])) };
+      const cityModel = { find: vi.fn().mockReturnValue(query([cairoCity, newYorkCity, londonCity])) };
+
+      const fullService = new FlightsService(
+        flightModel as never,
+        airportModel as never,
+        cityModel as never,
+        airlinesService as never,
+        bookingModel as never,
+        refundsService as never,
+        notificationsService as never,
+      );
+
+      await fullService.cancel(flightId.toString(), moderatorId);
+
+      expect(bookingModel.updateMany).toHaveBeenCalledWith(
+        { status: 'pending payment', 'segments.flightId': flightId },
+        { $set: { status: 'expired', holdExpiresAt: null } },
+      );
+      expect(refundsService.issueAcross).toHaveBeenCalledWith(
+        { bookingId, bookingType: 'flight', userId },
+        [{ paymentIntentId: 'pi_123', amount: 45000 }],
+        45000,
+      );
+      expect(notificationsService.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          userId,
+          type: 'flight_cancelled',
+        }),
+      );
+    });
   });
 });

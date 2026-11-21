@@ -352,4 +352,43 @@ describe('AdminModerationService (GEN-07, GEN-09, GEN-10)', () => {
       ).rejects.toThrow(NotFoundException);
     });
   });
+
+  describe('createReport (GEN-09)', () => {
+    const registeredUser = {
+      id: reporterId.toString(),
+      email: 'reporter@example.com',
+      role: UserRole.USER,
+    };
+
+    it('creates an open report for a registered user on an existing post and rejects duplicates with 409', async () => {
+      reportModel.findOne = vi.fn().mockReturnValue(chainQuery(null));
+      reportModel.create = vi.fn(async (data: Record<string, unknown>) => ({
+        toObject: () => ({ _id: reportId, createdAt: new Date('2026-11-20T12:00:00Z'), ...data }),
+      }));
+
+      const created = await service.createReport(registeredUser, {
+        targetType: ModeratedContentType.POST,
+        targetId: targetId.toString(),
+        reason: 'Spam post',
+      });
+
+      expect(created).toMatchObject({
+        id: reportId.toString(),
+        reporterId: reporterId.toString(),
+        targetType: ModeratedContentType.POST,
+        targetId: targetId.toString(),
+        reason: 'Spam post',
+        status: ReportStatus.OPEN,
+      });
+
+      reportModel.findOne = vi.fn().mockReturnValue(chainQuery({ _id: reportId }));
+      await expect(
+        service.createReport(registeredUser, {
+          targetType: ModeratedContentType.POST,
+          targetId: targetId.toString(),
+          reason: 'Duplicate report',
+        }),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
 });

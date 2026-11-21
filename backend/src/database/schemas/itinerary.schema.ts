@@ -2,7 +2,6 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
 import { City } from './city.schema.js';
 import { User } from './user.schema.js';
-import { City } from './city.schema.js';
 
 export enum ItineraryVisibility {
     PUBLIC = 'public',

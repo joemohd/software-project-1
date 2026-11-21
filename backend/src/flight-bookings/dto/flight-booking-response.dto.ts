@@ -62,7 +62,12 @@ export class FlightBookingResponseDto {
   @ApiProperty({ description: 'Sum of the segment fares in cents', example: 94500 }) fareTotal: number;
   @ApiProperty({ description: 'Extra baggage fee in cents', example: 5000 }) baggageFee: number;
   @ApiProperty({ description: 'fareTotal + baggageFee in cents', example: 99500 }) total: number;
-  @ApiProperty({ nullable: true, description: 'When the seat hold ends (UTC); pay before this', example: '2026-11-19T12:10:00.000Z' })
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'When the seat hold ends (UTC); pay before this',
+    example: '2026-11-19T12:10:00.000Z',
+  })
   holdExpiresAt: string | null;
   @ApiProperty({ type: PendingFlightChangeDto, nullable: true, description: 'FLT-27: a change waiting for payment, or null' })
   pendingChange: PendingFlightChangeDto | null;

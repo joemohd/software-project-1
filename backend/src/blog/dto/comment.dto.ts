@@ -10,6 +10,7 @@ const trim = ({ value }: { value: unknown }) =>
 export class CommentDto {
   @ApiProperty({
     example: 'Great tips, thanks!',
+    minLength: 1,
     maxLength: COMMENT_MAX_LENGTH,
   })
   @Transform(trim)

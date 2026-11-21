@@ -199,7 +199,7 @@ describe('FlightBookingsService (FLT-19, FLT-21)', () => {
       ['more infants than adults', [adult(), infant, { ...infant, passportNumber: 'D1234567' }], /2 infant\(s\) but only 1 adult/],
       ['a duplicate passport', [adult('A1234567'), adult('a1234567')], /used for more than one passenger/],
       ['too many extra bags', [adult('A1234567', [10, 10, 10])], /at most 2 per passenger/],
-      ['a bag over the flight limit', [adult('A1234567', [40])], /over the 32 kg limit/],
+      ['a bag over the cabin limit', [adult('A1234567', [40])], /over the 23 kg limit/],
     ])('rejects %s without holding seats', async (_case, passengers, message) => {
       await expect(service.create(userId, oneWay(passengers))).rejects.toThrow(message);
       expect(holdCalls()).toHaveLength(0);

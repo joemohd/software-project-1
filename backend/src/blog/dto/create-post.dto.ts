@@ -52,6 +52,7 @@ export class CreatePostDto {
     type: [String],
     example: ['egypt', 'museums'],
     maxItems: POST_MAX_TAGS,
+    items: { type: 'string', minLength: 1, maxLength: TAG_MAX_LENGTH },
     description: `Up to ${POST_MAX_TAGS} tags, each at most ${TAG_MAX_LENGTH} characters. Stored in lowercase; duplicates are merged.`,
   })
   @IsOptional()

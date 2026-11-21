@@ -3,20 +3,33 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { HydratedDocument, isValidObjectId, Model, Types } from 'mongoose';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
+import { NotificationType } from '../database/schemas/notification.schema.js';
 import { UserRole } from '../database/schemas/user.schema.js';
 import {
   BookingStatus,
   HotelBooking,
 } from '../database/schemas/expense.schema.js';
 import { Hotel, Room } from '../database/schemas/provider.schema.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
+import type { RefundResponseDto } from '../payments/dto/payment.dto.js';
+import { RefundsService, toRefundResponse } from '../payments/refunds.service.js';
 import type { CreateReviewDto } from './dto/create-review.dto.js';
 import type { UpdateReviewDto } from './dto/update-review.dto.js';
 import type { ReplyReviewDto } from './dto/reply-review.dto.js';
+import type {
+  CancelHotelBookingResponseDto,
+  HotelReservationDetailDto,
+  HotelReservationGroupsResponseDto,
+  HotelReservationSummaryDto,
+  ReviewResponseDto,
+} from './dto/hotel-booking-response.dto.js';
 
 type BookingDoc = HydratedDocument<HotelBooking> & { _id: Types.ObjectId };
 type Group = 'upcoming' | 'past' | 'cancelled';
@@ -25,22 +38,26 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class HotelBookingsService {
+  private readonly logger = new Logger(HotelBookingsService.name);
+
   constructor(
     @InjectModel(HotelBooking.name) private readonly bookingModel: Model<HotelBooking>,
     @InjectModel(Hotel.name) private readonly hotelModel: Model<Hotel>,
     @InjectModel(Room.name) private readonly roomModel: Model<Room>,
-  ) {}
+    @Optional() private readonly refundsService?: RefundsService,
+    @Optional() private readonly notificationsService?: NotificationsService,
+  ) { }
 
   // ---- HTL-20: list my reservations ---------------------------------------
 
-  async listMine(user: AuthenticatedUser) {
+  async listMine(user: AuthenticatedUser): Promise<HotelReservationGroupsResponseDto> {
     const bookings = await this.bookingModel
       .find({ userId: new Types.ObjectId(user.id) })
       .sort({ startDate: -1 })
       .exec();
 
     const hotelsByRoom = await this.hotelsForBookings(bookings);
-    const groups: Record<Group, unknown[]> = { upcoming: [], past: [], cancelled: [] };
+    const groups: Record<Group, HotelReservationSummaryDto[]> = { upcoming: [], past: [], cancelled: [] };
     for (const booking of bookings) {
       if (booking.status === BookingStatus.PENDING_PAYMENT) continue;
       groups[this.groupOf(booking)].push(this.toSummary(booking, hotelsByRoom));
@@ -48,15 +65,15 @@ export class HotelBookingsService {
     return groups;
   }
 
-  async getMine(bookingId: string, user: AuthenticatedUser) {
+  async getMine(bookingId: string, user: AuthenticatedUser): Promise<HotelReservationDetailDto> {
     const booking = await this.getOwnedBookingOrThrow(bookingId, user.id);
     const hotelsByRoom = await this.hotelsForBookings([booking]);
     return this.toDetail(booking, hotelsByRoom);
   }
 
-  // ---- HTL-21: cancel -----------------------------------------------------
+  // ---- HTL-21, PAY-03, GEN-01: cancel -------------------------------------
 
-  async cancel(bookingId: string, user: AuthenticatedUser) {
+  async cancel(bookingId: string, user: AuthenticatedUser): Promise<CancelHotelBookingResponseDto> {
     const booking = await this.getOwnedBookingOrThrow(bookingId, user.id);
     if (booking.status !== BookingStatus.CONFIRMED) {
       throw new BadRequestException('Only a Confirmed reservation can be cancelled.');
@@ -70,20 +87,79 @@ export class HotelBookingsService {
       (this.toUtcMidnight(booking.startDate).getTime() - this.todayUtcMidnight().getTime()) / DAY_MS,
     );
     const refundPercent = this.refundPercentFor(hotel, daysBefore);
-    const refundAmount = Math.round((booking.cost ?? 0) * refundPercent) / 100;
+    const refundAmount = Math.round(((booking.cost ?? 0) * refundPercent) / 100);
 
     booking.status = BookingStatus.CANCELLED;
     await booking.save();
 
-    // Rooms are released automatically: availability checks ignore CANCELLED reservations.
-    //
-    // INTEGRATION HOOKS (other teammates):
-    //  - PAY-03: if refundAmount > 0, issue the Stripe refund and create a Refund record.
-    //  - GEN-01: send the user an in-app "reservation cancelled / refund" notification.
+    // PAY-03: if refundAmount > 0, issue the Stripe refund and create a Refund record.
+    let refundDetails: RefundResponseDto | null = null;
+    let refundError: string | null = null;
+    if (refundAmount > 0 && booking.payment?.paymentIntentId && this.refundsService) {
+      try {
+        const saved = await this.refundsService.issue({
+          bookingId: booking._id,
+          bookingType: 'hotel',
+          userId: booking.userId,
+          paymentIntentId: booking.payment.paymentIntentId,
+          amount: refundAmount,
+        });
+        refundDetails = saved ? toRefundResponse(saved) : null;
+      } catch (error) {
+        refundError = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Refund for cancelled hotel booking ${booking._id.toString()} failed: ${refundError}`);
+      }
+    }
+
+    // GEN-01: send the user an in-app "reservation cancelled / refund" notification.
+    if (this.notificationsService) {
+      const hotelName = hotel?.name ?? 'your hotel';
+      const refundNote =
+        refundAmount > 0
+          ? ` A ${refundPercent}% refund (${refundAmount} cents) has been initiated.`
+          : ' Per the hotel cancellation policy, no refund applies.';
+      try {
+        await this.notificationsService.create({
+          userId: booking.userId,
+          type: refundAmount > 0 ? NotificationType.REFUND_ISSUED : NotificationType.BOOKING_CANCELLED,
+          title: `Hotel reservation at ${hotelName} cancelled`,
+          message: `Your hotel reservation ${booking._id.toString()} at ${hotelName} has been cancelled.${refundNote}`,
+          metadata: {
+            bookingId: booking._id.toString(),
+            bookingType: 'hotel',
+            hotelId: hotel?._id?.toString() ?? null,
+            refundPercentage: refundPercent,
+            refundAmount,
+            refundId: refundDetails?.id ?? null,
+          },
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to send cancellation notification for hotel booking ${booking._id.toString()}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    const status = refundDetails
+      ? refundDetails.status
+      : refundError
+        ? 'Failed'
+        : refundAmount > 0
+          ? 'Pending'
+          : 'none';
+
     return {
       id: booking._id.toString(),
       status: booking.status,
-      refund: { percent: refundPercent, amount: refundAmount, currency: 'usd', status: 'pending' },
+      refund: {
+        id: refundDetails?.id ?? null,
+        percent: refundPercent,
+        amount: refundAmount,
+        currency: refundDetails?.currency ?? 'usd',
+        status,
+        details: refundDetails,
+        error: refundError,
+      },
     };
   }
 

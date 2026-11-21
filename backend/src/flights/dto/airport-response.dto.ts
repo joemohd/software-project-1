@@ -37,6 +37,7 @@ export class AirportResponseDto {
   country: AirportCountryDto | null;
 
   @ApiProperty({
+    type: String,
     example: 'Africa/Cairo',
     nullable: true,
     description: "IANA time zone of the airport's city. Null if the city has no time zone set.",

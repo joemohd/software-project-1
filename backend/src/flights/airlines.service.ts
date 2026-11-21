@@ -79,6 +79,37 @@ export class AirlinesService {
 
     return { airlineId: updated._id.toString(), tiers: toCancellationTiers(updated.cancellationPolicies) };
   }
+
+  // FLT-08, FLT-17, PAY-02: read an airline's extra-baggage policy
+  async getBaggagePolicy(airlineId: string): Promise<BaggagePolicyResponseDto> {
+    if (!isValidObjectId(airlineId)) throw new NotFoundException(AIRLINE_NOT_FOUND);
+    const airline = await this.airlineModel
+      .findById(airlineId)
+      .select('bagPolicy')
+      .lean<BagPolicyRecord>()
+      .exec();
+    if (!airline) throw new NotFoundException(AIRLINE_NOT_FOUND);
+    return {
+      airlineId: airline._id.toString(),
+      priceExtraBag: airline.bagPolicy?.priceExtraBag ?? 0,
+      maxExtraBagCount: airline.bagPolicy?.maxExtraBagCount ?? 0,
+    };
+  }
+
+  // FLT-09, FLT-17, PAY-02: read an airline's cancellation refund tiers
+  async getCancellationPolicy(airlineId: string): Promise<CancellationPolicyResponseDto> {
+    if (!isValidObjectId(airlineId)) throw new NotFoundException(AIRLINE_NOT_FOUND);
+    const airline = await this.airlineModel
+      .findById(airlineId)
+      .select('cancellationPolicies')
+      .lean<CancellationPolicyRecord>()
+      .exec();
+    if (!airline) throw new NotFoundException(AIRLINE_NOT_FOUND);
+    return {
+      airlineId: airline._id.toString(),
+      tiers: toCancellationTiers(airline.cancellationPolicies ?? []),
+    };
+  }
 }
 
 /**

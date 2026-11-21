@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsEnum, IsIn, IsInt, IsMongoId, IsOptional, IsString, Matches, Min } from 'class-validator';
-import { CabinType, FlightStatus } from '../../database/schemas/flight.schema.js';
+import { CabinType, FlightStatus, SeatAvailability, SeatType } from '../../database/schemas/flight.schema.js';
+import { AirlineCancellationTierDto } from './update-cancellation-policy.dto.js';
 
 export const FLIGHT_SORT_FIELDS = ['price', 'duration', 'departureTime'] as const;
 export type FlightSortBy = (typeof FLIGHT_SORT_FIELDS)[number];
@@ -289,4 +290,90 @@ export class SearchFlightsResponseDto {
     description: '"No flights found." when no flights match the criteria (FLT-11), otherwise null',
   })
   message: string | null;
+}
+
+// FLT-17, FLT-28: seat state on a flight details page
+export class FlightDetailsSeatDto {
+  @ApiProperty({ example: 10 })
+  row: number;
+
+  @ApiProperty({ example: 'A' })
+  column: string;
+
+  @ApiProperty({ enum: SeatType, example: SeatType.WINDOW })
+  type: SeatType;
+
+  @ApiProperty({ enum: SeatAvailability, example: SeatAvailability.AVAILABLE })
+  availability: SeatAvailability;
+}
+
+// FLT-04, FLT-17: cabin details with price, seats remaining, baggage allowance and seat map
+export class FlightDetailsCabinDto {
+  @ApiProperty({ enum: CabinType, example: CabinType.ECONOMY })
+  name: CabinType;
+
+  @ApiProperty({ description: 'Price per seat in cents (> 0, FLT-04)', example: 45000 })
+  seatPrice: number;
+
+  @ApiProperty({ description: 'Free baggage allowance in number of bags (FLT-04)', example: 1 })
+  freeBagCount: number;
+
+  @ApiProperty({ description: 'Maximum weight per bag in kg (free and extra bags, FLT-04, FLT-08)', example: 23 })
+  freeBagWeight: number;
+
+  @ApiProperty({ description: 'Total seats in this cabin (FLT-04)', example: 156 })
+  seatCount: number;
+
+  @ApiProperty({ description: 'Seats remaining (available = total - booked - held, FLT-17)', example: 120 })
+  availableSeats: number;
+
+  @ApiProperty({ type: [FlightDetailsSeatDto], description: 'Seat map for seat selection (FLT-28)' })
+  seats: FlightDetailsSeatDto[];
+}
+
+export class FlightDetailsBaggagePolicyDto {
+  @ApiProperty({ description: 'Price per extra bag in cents (FLT-08)', example: 5000 })
+  priceExtraBag: number;
+
+  @ApiProperty({ description: 'Maximum extra bags per passenger (FLT-08)', example: 2 })
+  maxExtraBagCount: number;
+}
+
+// FLT-17: GET /api/flights/:id full flight details response
+export class FlightDetailsResponseDto {
+  @ApiProperty({ example: '665f1c2e9b1e8a0012345680' })
+  id: string;
+
+  @ApiProperty({ type: FlightSearchAirlineDto })
+  airline: FlightSearchAirlineDto;
+
+  @ApiProperty({ example: '123' })
+  number: string;
+
+  @ApiProperty({ enum: FlightStatus, example: FlightStatus.SCHEDULED })
+  status: FlightStatus;
+
+  @ApiProperty({ type: FlightSearchStopDto })
+  departure: FlightSearchStopDto;
+
+  @ApiProperty({ type: FlightSearchStopDto })
+  arrival: FlightSearchStopDto;
+
+  @ApiProperty({ description: 'Flight duration in minutes (FLT-17)', example: 270 })
+  durationMinutes: number;
+
+  @ApiProperty({ description: 'Maximum weight per bag in kg', example: 32 })
+  maxBagWeight: number;
+
+  @ApiProperty({ type: [FlightDetailsCabinDto] })
+  cabins: FlightDetailsCabinDto[];
+
+  @ApiProperty({ type: FlightDetailsBaggagePolicyDto, description: "Airline's extra-baggage policy (FLT-08, FLT-17)" })
+  baggagePolicy: FlightDetailsBaggagePolicyDto;
+
+  @ApiProperty({
+    type: [AirlineCancellationTierDto],
+    description: "Airline's cancellation refund tiers sorted by daysBeforeDeparture (FLT-09, FLT-17)",
+  })
+  cancellationPolicy: AirlineCancellationTierDto[];
 }

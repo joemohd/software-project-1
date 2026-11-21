@@ -28,6 +28,7 @@ import {
   ListAuditLogsQueryDto,
 } from './dto/list-audit-logs.dto.js';
 import {
+  CreateReportDto,
   DeleteContentResponseDto,
   ListReportsQueryDto,
   ReportedContentPreviewDto,
@@ -136,6 +137,80 @@ export class AdminModerationService {
       pageSize: ADMIN_PAGE_SIZE,
       total,
       totalPages: Math.ceil(total / ADMIN_PAGE_SIZE),
+    };
+  }
+
+  // GEN-09: a registered user reports a post, comment, review or itinerary with a reason, at most once per item
+  async createReport(user: AuthenticatedUser, dto: CreateReportDto): Promise<ReportEntryDto> {
+    if (user.role !== UserRole.USER) {
+      throw new ForbiddenException('Only registered users can submit content reports.');
+    }
+    if (!isValidObjectId(dto.targetId)) {
+      throw new NotFoundException(`${CONTENT_LABELS[dto.targetType]} not found.`);
+    }
+
+    const targetObjectId = new Types.ObjectId(dto.targetId);
+    const reporterObjectId = new Types.ObjectId(user.id);
+    const dummyReport: ReportRecord = {
+      _id: new Types.ObjectId(),
+      reporterId: reporterObjectId,
+      targetType: dto.targetType,
+      targetId: targetObjectId,
+      reason: dto.reason,
+      status: ReportStatus.OPEN,
+      resolvedBy: null,
+      resolvedAt: null,
+      resolutionNote: null,
+      createdAt: new Date(),
+    };
+    const previews = await this.loadTargetPreviews([dummyReport]);
+    const preview = previews.get(`${dto.targetType}:${dto.targetId}`);
+    if (!preview || !preview.exists) {
+      throw new NotFoundException(`${CONTENT_LABELS[dto.targetType]} not found.`);
+    }
+
+    const existing = await this.reportModel
+      .findOne({ reporterId: reporterObjectId, targetType: dto.targetType, targetId: targetObjectId })
+      .lean<ReportRecord>()
+      .exec();
+    if (existing) {
+      throw new ConflictException('You have already reported this item.');
+    }
+
+    let createdRecord: ReportRecord;
+    try {
+      const created = await this.reportModel.create({
+        reporterId: reporterObjectId,
+        targetType: dto.targetType,
+        targetId: targetObjectId,
+        reason: dto.reason.trim(),
+        status: ReportStatus.OPEN,
+        resolvedBy: null,
+        resolvedAt: null,
+        resolutionNote: null,
+      });
+      createdRecord = (typeof created.toObject === 'function' ? created.toObject() : created) as unknown as ReportRecord;
+    } catch (error) {
+      if ((error as { code?: number } | null)?.code === 11000) {
+        throw new ConflictException('You have already reported this item.');
+      }
+      throw error;
+    }
+
+    const actors = await this.loadActors([reporterObjectId]);
+    return {
+      id: createdRecord._id.toString(),
+      reporterId: reporterObjectId.toString(),
+      reporter: actors.get(reporterObjectId.toString()) ?? null,
+      targetType: createdRecord.targetType,
+      targetId: createdRecord.targetId.toString(),
+      target: preview,
+      reason: createdRecord.reason,
+      status: createdRecord.status,
+      resolvedBy: null,
+      resolvedAt: null,
+      resolutionNote: null,
+      createdAt: createdRecord.createdAt ?? new Date(),
     };
   }
 

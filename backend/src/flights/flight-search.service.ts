@@ -1,14 +1,16 @@
-import { BadRequestException, Injectable, Optional } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { DateTime } from 'luxon';
 import { isValidObjectId, Model, Types } from 'mongoose';
 import { Airport } from '../database/schemas/airport.schema.js';
 import { City } from '../database/schemas/city.schema.js';
 import { CabinType, Flight, FlightStatus, SeatAvailability } from '../database/schemas/flight.schema.js';
-import { Airline, ProviderStatus } from '../database/schemas/provider.schema.js';
+import { Airline, CancellationPolicy, ProviderStatus } from '../database/schemas/provider.schema.js';
 import { segmentFare } from '../flight-bookings/booking-rules.js';
 import { FlightBookingsService } from '../flight-bookings/flight-bookings.service.js';
+import { toCancellationTiers } from './airlines.service.js';
 import {
+  FlightDetailsResponseDto,
   FlightSearchCabinDto,
   FlightSearchItemDto,
   FlightSearchLegPageDto,
@@ -22,7 +24,15 @@ import { PAGE_SIZE } from './flights.constants.js';
 
 type AirportRecord = { _id: Types.ObjectId; iataCode: string; name: string; cityId: Types.ObjectId };
 type CityRecord = { _id: Types.ObjectId; timeZone?: string };
-type AirlineRecord = { _id: Types.ObjectId; name: string; iataCode: string; logoUrl?: string; status: ProviderStatus };
+type AirlineRecord = {
+  _id: Types.ObjectId;
+  name: string;
+  iataCode: string;
+  logoUrl?: string;
+  status: ProviderStatus;
+  bagPolicy?: { priceExtraBag: number; maxExtraBagCount: number };
+  cancellationPolicies?: CancellationPolicy[];
+};
 type FlightRecord = Flight & { _id: Types.ObjectId };
 
 export interface MultiAirportFlightSearchOptions {
@@ -424,6 +434,111 @@ export class FlightSearchService {
       pageSize: PAGE_SIZE,
       total,
       totalPages: Math.ceil(total / PAGE_SIZE),
+    };
+  }
+
+  /**
+   * FLT-17: flight details showing airline, flight number, airports, local departure and arrival times,
+   * duration, each cabin category with price, seats remaining, baggage allowance and seat map, and the
+   * airline's extra-baggage and cancellation policies.
+   */
+  async getFlightDetails(flightId: string): Promise<FlightDetailsResponseDto> {
+    if (!isValidObjectId(flightId)) {
+      throw new NotFoundException('Flight not found.');
+    }
+    const flightObjectId = new Types.ObjectId(flightId);
+    if (this.flightBookingsService) {
+      await this.flightBookingsService.expireOverdueHolds({ flightIds: [flightObjectId] });
+    }
+
+    const flight = await this.flightModel.findById(flightObjectId).lean<FlightRecord>().exec();
+    if (!flight) {
+      throw new NotFoundException('Flight not found.');
+    }
+
+    const [airlines, airports] = await Promise.all([
+      this.airlineModel
+        .find({ _id: flight.airlineId })
+        .select('name iataCode logoUrl status bagPolicy cancellationPolicies')
+        .lean<AirlineRecord[]>()
+        .exec(),
+      this.airportModel
+        .find({ _id: { $in: [flight.departure.airportId, flight.arrival.airportId] } })
+        .select('iataCode name cityId')
+        .lean<AirportRecord[]>()
+        .exec(),
+    ]);
+
+    const airline = airlines[0];
+    if (!airline || airline.status !== ProviderStatus.ACTIVE) {
+      throw new NotFoundException('Flight not found.');
+    }
+
+    const depAirport = airports.find((a) => a._id.toString() === flight.departure.airportId.toString());
+    const arrAirport = airports.find((a) => a._id.toString() === flight.arrival.airportId.toString());
+    if (!depAirport || !arrAirport) {
+      throw new NotFoundException('Flight airports not found.');
+    }
+
+    const cities = await this.cityModel
+      .find({ _id: { $in: [depAirport.cityId, arrAirport.cityId] } })
+      .select('timeZone')
+      .lean<CityRecord[]>()
+      .exec();
+    const depZone = cities.find((c) => c._id.toString() === depAirport.cityId?.toString())?.timeZone ?? 'UTC';
+    const arrZone = cities.find((c) => c._id.toString() === arrAirport.cityId?.toString())?.timeZone ?? 'UTC';
+
+    const durationMinutes = Math.round(
+      (flight.arrival.timestamp.getTime() - flight.departure.timestamp.getTime()) / 60000,
+    );
+
+    return {
+      id: flight._id.toString(),
+      airline: {
+        id: airline._id.toString(),
+        name: airline.name,
+        iataCode: airline.iataCode,
+        logoUrl: airline.logoUrl ?? null,
+      },
+      number: flight.number,
+      status: flight.status,
+      departure: {
+        airportId: depAirport._id.toString(),
+        iataCode: depAirport.iataCode,
+        airportName: depAirport.name,
+        timestamp: flight.departure.timestamp.toISOString(),
+        localTime: utcToLocal(flight.departure.timestamp, depZone),
+        timeZone: depZone,
+      },
+      arrival: {
+        airportId: arrAirport._id.toString(),
+        iataCode: arrAirport.iataCode,
+        airportName: arrAirport.name,
+        timestamp: flight.arrival.timestamp.toISOString(),
+        localTime: utcToLocal(flight.arrival.timestamp, arrZone),
+        timeZone: arrZone,
+      },
+      durationMinutes,
+      maxBagWeight: flight.maxBagWeight,
+      cabins: flight.cabins.map((cabin) => ({
+        name: cabin.name,
+        seatPrice: cabin.seatPrice,
+        freeBagCount: cabin.freeBagCount ?? (cabin.freeBagWeight > 0 ? 1 : 0),
+        freeBagWeight: cabin.freeBagWeight,
+        seatCount: cabin.seats.length,
+        availableSeats: cabin.seats.filter((seat) => seat.availability === SeatAvailability.AVAILABLE).length,
+        seats: cabin.seats.map((seat) => ({
+          row: seat.row,
+          column: seat.column,
+          type: seat.type,
+          availability: seat.availability,
+        })),
+      })),
+      baggagePolicy: {
+        priceExtraBag: airline.bagPolicy?.priceExtraBag ?? 0,
+        maxExtraBagCount: airline.bagPolicy?.maxExtraBagCount ?? 0,
+      },
+      cancellationPolicy: toCancellationTiers(airline.cancellationPolicies ?? []),
     };
   }
 }

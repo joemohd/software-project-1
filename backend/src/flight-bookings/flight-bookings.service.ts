@@ -156,12 +156,13 @@ export class FlightBookingsService {
     assertPassengerMix(types);
     assertUniquePassports(dto.passengers.map((passenger) => passenger.passportNumber));
 
-    // FLT-19: extra bags are checked against, and charged by, each flight they travel on
+    // FLT-08, FLT-19: extra bags are checked against the cabin's free baggage weight allowance, and charged per flight
     const bags = dto.passengers.map((passenger) => passenger.extraBagWeights ?? []);
     const extraBags = bags.reduce((count, weights) => count + weights.length, 0);
     let totalBaggageFee = 0;
-    for (const { flight, airline, label } of segments) {
-      assertBaggage(bags, { maxExtraBagCount: airline.bagPolicy.maxExtraBagCount, maxBagWeight: flight.maxBagWeight }, label);
+    for (const { flight, airline, cabin, label } of segments) {
+      const cabinBagWeightLimit = cabin.freeBagWeight > 0 ? cabin.freeBagWeight : flight.maxBagWeight;
+      assertBaggage(bags, { maxExtraBagCount: airline.bagPolicy.maxExtraBagCount, maxBagWeight: cabinBagWeightLimit }, label);
       totalBaggageFee += baggageFee(airline.bagPolicy.priceExtraBag, extraBags);
     }
 
@@ -489,7 +490,10 @@ export class FlightBookingsService {
     }
     assertBaggage(
       booking.passengers.map((passenger) => passenger.extraBagWeights ?? []),
-      { maxExtraBagCount: airline.bagPolicy.maxExtraBagCount, maxBagWeight: newFlight.maxBagWeight },
+      {
+        maxExtraBagCount: airline.bagPolicy.maxExtraBagCount,
+        maxBagWeight: cabin.freeBagWeight > 0 ? cabin.freeBagWeight : newFlight.maxBagWeight,
+      },
       'the new flight',
     );
 
