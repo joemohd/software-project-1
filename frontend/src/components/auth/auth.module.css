@@ -1,0 +1,492 @@
+/* Styles for the login and register screens (designs: Login.dc.html, Register.dc.html). */
+
+/* ---------- Login: photo panel + form ---------- */
+
+.splitPage {
+  min-height: 100vh;
+  display: flex;
+  flex-wrap: wrap;
+  background: var(--color-background);
+}
+
+.heroPanel {
+  flex: 1 1 520px;
+  min-width: 0;
+  min-height: 420px;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--color-ink);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 56px;
+}
+
+.heroImage {
+  z-index: -2;
+  object-fit: cover;
+  object-position: 48% 40%;
+}
+
+.heroShade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(11, 27, 51, 0.4);
+}
+
+.heroCopy {
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 48px 0;
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9db8ff;
+}
+
+.heroTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(36px, 4vw, 52px);
+  line-height: 1.05;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.heroText {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--color-on-dark);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 13px;
+  color: #dce4f2;
+}
+
+.photoCredit {
+  position: absolute;
+  right: 16px;
+  bottom: 10px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.formPanel {
+  flex: 1 1 440px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+}
+
+.formColumn {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ---------- Register: photo background + card ---------- */
+
+.photoPage {
+  min-height: 100vh;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding: 40px 16px 64px;
+}
+
+.photoPageImage {
+  z-index: -2;
+  object-fit: cover;
+  object-position: 50% 40%;
+}
+
+.photoPageShade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: rgba(11, 27, 51, 0.3);
+}
+
+.card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+@media (max-width: 520px) {
+  .card {
+    padding: 28px 20px;
+  }
+
+  .heroPanel {
+    padding: 32px 24px;
+  }
+}
+
+/* ---------- Brand ---------- */
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  align-self: flex-start;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.brand:hover {
+  color: #ffffff;
+}
+
+.brandCentered {
+  align-self: center;
+}
+
+.brandMark {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brandName {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Headings and links ---------- */
+
+.backLink {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+.footerText {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.footerText a {
+  font-weight: 600;
+}
+
+/* ---------- Form ---------- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.optional {
+  font-weight: 400;
+  color: var(--color-subtle);
+}
+
+.input {
+  width: 100%;
+  height: 48px;
+  padding: 0 14px;
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-field);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 15px;
+  color: var(--color-ink);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(31, 85, 214, 0.18);
+}
+
+.input[aria-invalid='true'] {
+  border-color: #c0392b;
+}
+
+.input:disabled {
+  background: var(--color-background);
+  color: var(--color-subtle);
+}
+
+.passwordWrap {
+  position: relative;
+}
+
+.passwordWrap .input {
+  padding-right: 52px;
+}
+
+.toggle {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fieldError {
+  margin: 0;
+  font-size: 13px;
+  color: #b42318;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-subtle);
+}
+
+.rules {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-subtle);
+}
+
+.ruleOk {
+  color: var(--color-success);
+}
+
+.checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-ink-soft);
+  cursor: pointer;
+}
+
+.checkbox input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  flex: none;
+  accent-color: var(--color-accent);
+}
+
+.submit {
+  height: 52px;
+  margin-top: 4px;
+  border: 0;
+  border-radius: var(--radius-field);
+  background: var(--color-accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+}
+
+.submit:disabled {
+  background: var(--color-disabled-bg);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+.secondaryButton {
+  height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--color-input-border);
+  border-radius: var(--radius-field);
+  background: var(--color-surface);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+/* ---------- Alerts ---------- */
+
+.alert {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-radius: var(--radius-field);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.alert svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.alertList {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.alertError {
+  background: var(--color-danger-bg);
+  border: 1px solid var(--color-danger-border);
+  color: var(--color-danger-text);
+}
+
+.alertWarning {
+  background: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+}
+
+.alertInfo {
+  background: var(--color-accent-soft);
+  border: 1px solid #b9cdf7;
+  color: var(--color-accent-hover);
+}
+
+/* ---------- Register success ---------- */
+
+.success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  text-align: center;
+}
+
+.successIcon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.successText {
+  margin: 0;
+  max-width: 340px;
+  font-size: 15px;
+  line-height: 1.55;
+  color: var(--color-muted);
+}

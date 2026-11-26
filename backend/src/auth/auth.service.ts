@@ -33,14 +33,16 @@ import {
   passwordMatches,
   passwordResetEmail,
   toProfile,
+  VERIFICATION_RESEND_COOLDOWN_MS,
   verificationEmail,
 } from './auth.helper.js';
 import type { AuthenticatedUser, AuthSession, EmailVerificationPayload, UserRecord } from './auth.types.js';
-import { MessageResponseDto, RegisterResponseDto, UserProfileDto } from './dto/auth-response.dto.js';
+import { CountryOptionDto, MessageResponseDto, RegisterResponseDto, UserProfileDto } from './dto/auth-response.dto.js';
 import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { VerifyEmailQueryDto } from './dto/verify-email.dto.js';
 import { MailService } from './mail.service.js';
@@ -50,6 +52,8 @@ import { RefreshToken } from './schemas/refresh-token.schema.js';
 export class AuthService {
   // Checked against when the email is unknown, so response time doesn't reveal which emails are registered
   private readonly dummyPasswordHash = hashPassword(generateToken());
+  // ACC-02: when each account was last sent a resent verification link (per server instance)
+  private readonly lastVerificationResend = new Map<string, number>();
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
@@ -86,14 +90,30 @@ export class AuthService {
       termsAcceptedAt: new Date(), // ACC-01: the DTO only lets the request through when acceptedTerms is true
     });
 
-    const verificationToken = await this.jwtService.signAsync(emailVerificationPayload(user._id), {
-      expiresIn: EMAIL_VERIFICATION_TTL_SECONDS,
-    });
-    const verificationLink = buildFrontendLink(this.config.frontendUrl, 'verify-email', verificationToken);
     // A failed email doesn't undo the registration; MailService logs the error
-    await this.mailService.send(verificationEmail(user.emailAddress, user.fullName, verificationLink));
+    await this.sendVerificationEmail(user);
 
     return { user: toProfile(user) };
+  }
+
+  // ACC-02: sends a fresh verification link to an unverified account
+  async resendVerification(dto: ResendVerificationDto, now = Date.now()): Promise<MessageResponseDto> {
+    const user = await this.userModel
+      .findOne({ emailAddress: normalizeEmail(dto.emailAddress) })
+      .lean<UserRecord>()
+      .exec();
+
+    if (user && !user.isVerified && !isBlocked(user.status)) {
+      const key = user._id.toString();
+      const lastSentAt = this.lastVerificationResend.get(key) ?? 0;
+      if (now - lastSentAt >= VERIFICATION_RESEND_COOLDOWN_MS) {
+        this.lastVerificationResend.set(key, now);
+        await this.sendVerificationEmail(user);
+      }
+    }
+
+    // Same answer either way, so this endpoint can't be used to discover registered or verified emails
+    return { message: MESSAGES.verificationResent };
   }
 
   // ACC-02
@@ -251,6 +271,17 @@ export class AuthService {
     return { message: MESSAGES.passwordChanged };
   }
 
+  // ACC-01: countries a new user can pick as their country of origin, sorted by name
+  async countries(): Promise<CountryOptionDto[]> {
+    const records = await this.countryModel
+      .find()
+      .select('code name')
+      .sort({ name: 1 })
+      .lean<{ _id: Types.ObjectId; code: string; name: string }[]>()
+      .exec();
+    return records.map((country) => ({ id: country._id.toString(), code: country.code, name: country.name }));
+  }
+
   // ACC-04, ACC-19
   async me(user: AuthenticatedUser): Promise<UserProfileDto> {
     const record = await this.userModel.findById(user.id).lean<UserRecord>().exec();
@@ -261,6 +292,15 @@ export class AuthService {
   /* ---------------------------------------------------------------- */
   /* Database helpers                                                 */
   /* ---------------------------------------------------------------- */
+
+  /** Emails a 24-hour verification link (ACC-02). Returns whether the SMTP server accepted it. */
+  private async sendVerificationEmail(user: UserRecord): Promise<boolean> {
+    const verificationToken = await this.jwtService.signAsync(emailVerificationPayload(user._id), {
+      expiresIn: EMAIL_VERIFICATION_TTL_SECONDS,
+    });
+    const verificationLink = buildFrontendLink(this.config.frontendUrl, 'verify-email', verificationToken);
+    return this.mailService.send(verificationEmail(user.emailAddress, user.fullName, verificationLink));
+  }
 
   /** Creates the user, turning a duplicate-key race into a 409. */
   private async createUser(fields: Partial<User>): Promise<UserRecord> {

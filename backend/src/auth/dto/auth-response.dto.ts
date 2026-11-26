@@ -35,6 +35,18 @@ export class LoginResponseDto {
   user: UserProfileDto;
 }
 
+/** One entry in the register form's country dropdown (ACC-01: countryOfOriginId). */
+export class CountryOptionDto {
+  @ApiProperty({ description: 'Send this as countryOfOriginId when registering' })
+  id: string;
+
+  @ApiProperty({ example: 'EG', description: 'ISO 3166-1 alpha-2 code' })
+  code: string;
+
+  @ApiProperty({ example: 'Egypt' })
+  name: string;
+}
+
 /** Generic acknowledgement for endpoints that don't return data (logout, password flows, email verification). */
 export class MessageResponseDto {
   @ApiProperty()

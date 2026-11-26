@@ -23,6 +23,7 @@ export const MAX_LOGIN_ATTEMPTS = 5; // ACC-05
 export const LOCKOUT_MS = 15 * 60_000; // ACC-05: 15 minutes
 export const PASSWORD_RESET_TTL_MS = 30 * 60_000; // ACC-07: 30 minutes
 export const EMAIL_VERIFICATION_TTL_SECONDS = 24 * 60 * 60; // ACC-02: 24 hours
+export const VERIFICATION_RESEND_COOLDOWN_MS = 60_000; // ACC-02: at most one resent link per account per minute
 
 export const ACCESS_TOKEN_COOKIE = 'access_token';
 export const REFRESH_TOKEN_COOKIE = 'refresh_token';
@@ -36,6 +37,7 @@ export const MESSAGES = {
   unknownCountry: 'countryOfOriginId does not match a known country.',
   invalidVerificationLink: 'This verification link is invalid or has expired.',
   emailVerified: 'Your email address has been verified.',
+  verificationResent: 'If that account exists and is not verified yet, a new verification link has been sent.',
   loggedOut: 'You have been logged out.',
   forgotPassword: 'If an account with that email exists, a password reset link has been sent.',
   invalidResetLink: 'This password reset link is invalid or has expired.',
