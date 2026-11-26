@@ -23,6 +23,13 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 
+# Frontend build output and dependencies
+/frontend/node_modules
+/frontend/.next
+/frontend/out
+/frontend/next-env.d.ts
+.env*.local
+
 # Backend test output
 /backend/coverage
 /backend/.nyc_output
