@@ -17,7 +17,7 @@ input:focus{outline:none;border-color:#1F55D6 !important;box-shadow:0 0 0 3px rg
 button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2px}
 </style>
 </helmet>
-<div style="min-height: 100vh; background: #F4F6FA; font-family: Inter, system-ui, sans-serif; color: #0B1B33;">
+<div style="min-height: 100vh; position: relative; isolation: isolate; overflow: hidden; background: #F4F6FA; font-family: Inter, system-ui, sans-serif; color: #0B1B33;">
 
   <header style="background: #FFFFFF; border-bottom: 1px solid #DDE3EC;">
     <div style="max-width: 1280px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
@@ -39,6 +39,17 @@ button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2p
       <span>Your seats are held for <strong style="font-variant-numeric: tabular-nums;">{{ clock }}</strong>. Complete payment before the hold expires, or the seats are released.</span>
     </div>
   </div>
+
+  <section style="position: relative; isolation: isolate; overflow: hidden; background: #0B1B33; color: #FFFFFF;">
+    <img src="/_blob/693c7590708a3076214d0af61b275871" alt="" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 33%;">
+    <div aria-hidden="true" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; background: rgba(11,27,51,0.3);"></div>
+    <div style="max-width: 1280px; margin: 0 auto; padding: 56px 24px; display: flex; flex-direction: column; gap: 6px;">
+      <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #C9D8FF;">Complete your booking</p>
+      <p style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 36px; font-weight: 600; letter-spacing: -0.02em;">Cairo → Dubai</p>
+      <p style="margin: 0; font-size: 15px; color: #DCE4F2;">Meridian Air MR 218 · Fri 18 Dec · 3 passengers</p>
+    </div>
+    <span style="position: absolute; right: 16px; bottom: 10px; font-size: 11px; color: rgba(255,255,255,0.8);">Photo: Bill Abbott, CC BY-SA 2.0, via Wikimedia Commons</span>
+  </section>
 
   <div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start;">
     <main style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
@@ -131,7 +142,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2p
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1180}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1390}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);

@@ -55,7 +55,10 @@ button:focus-visible,a:focus-visible{outline:2px solid #9DB8FF;outline-offset:2p
     </div>
   </header>
 
-  <section style="background: #0B1B33; padding: 16px 0 40px;">
+  <section style="position: relative; isolation: isolate; overflow: hidden; background: #0B1B33; padding: 40px 0 120px;">
+    <img src="/_blob/693c7590708a3076214d0af61b275871" alt="" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%;">
+    <div aria-hidden="true" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; background: rgba(11,27,51,0.3);"></div>
+    <span style="position: absolute; right: 16px; bottom: 10px; font-size: 11px; color: rgba(255,255,255,0.8);">Photo: Bill Abbott, CC BY-SA 2.0, via Wikimedia Commons</span>
     <div style="max-width: 1280px; margin: 0 auto; padding: 0 24px; display: flex; flex-direction: column; gap: 18px;">
       <div style="display: flex; flex-direction: column; gap: 6px; color: #FFFFFF;">
         <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 600; letter-spacing: -0.02em;">{{ greeting }}</h1>
@@ -199,7 +202,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #9DB8FF;outline-offset:2p
   </div>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"signedIn":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1180}}'>
+<script type="text/x-dc" data-dc-script data-props='{"signedIn":{"editor":"boolean","default":false},"$preview":{"width":1440,"height":1260}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);

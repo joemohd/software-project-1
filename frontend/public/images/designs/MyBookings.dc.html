@@ -16,7 +16,7 @@ a{color:#1F55D6}a:hover{color:#163F9F}
 button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2px}
 </style>
 </helmet>
-<div style="min-height: 100vh; position: relative; background: #F4F6FA; font-family: Inter, system-ui, sans-serif; color: #0B1B33;">
+<div style="min-height: 100vh; position: relative; isolation: isolate; overflow: hidden; background: #F4F6FA; font-family: Inter, system-ui, sans-serif; color: #0B1B33;">
 
   <header style="background: #0B1B33; color: #FFFFFF;">
     <div style="max-width: 1280px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 24px;">
@@ -41,9 +41,18 @@ button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2p
     </div>
   </header>
 
-  <main style="max-width: 1040px; margin: 0 auto; padding: 40px 24px 64px; display: flex; flex-direction: column; gap: 24px;">
-    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
-      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 600;">My bookings</h1>
+  <section style="position: relative; isolation: isolate; overflow: hidden; background: #0B1B33; color: #FFFFFF;">
+    <img src="/_blob/693c7590708a3076214d0af61b275871" alt="" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 33%;">
+    <div aria-hidden="true" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; background: rgba(11,27,51,0.3);"></div>
+    <div style="max-width: 1040px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; gap: 6px;">
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 600; letter-spacing: -0.02em;">My bookings</h1>
+      <p style="margin: 0; font-size: 16px; color: #DCE4F2;">Your flights and hotel stays in one place.</p>
+    </div>
+    <span style="position: absolute; right: 16px; bottom: 10px; font-size: 11px; color: rgba(255,255,255,0.8);">Photo: Bill Abbott, CC BY-SA 2.0, via Wikimedia Commons</span>
+  </section>
+
+  <main style="max-width: 1040px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: 16px;">
       <div role="tablist" aria-label="Booking groups" style="display: flex; gap: 4px; padding: 4px; background: #E6EAF2; border-radius: 10px;">
         <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="3">
           <button type="button" role="tab" aria-selected="{{ t.selected }}" onClick="{{ t.pick }}" style="{{ t.style }}">{{ t.label }}</button>
@@ -104,7 +113,7 @@ button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2p
   </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1200}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
