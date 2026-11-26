@@ -301,6 +301,23 @@ describe('AuthService', () => {
     });
   });
 
+  describe('countries (ACC-01)', () => {
+    it('returns every country as id, code and name, sorted by name', async () => {
+      const egypt = { _id: new Types.ObjectId(), code: 'EG', name: 'Egypt' };
+      const q = { select: vi.fn(), sort: vi.fn(), lean: vi.fn(), exec: vi.fn().mockResolvedValue([egypt]) };
+      q.select.mockReturnValue(q);
+      q.sort.mockReturnValue(q);
+      q.lean.mockReturnValue(q);
+      countryModel.find = vi.fn().mockReturnValue(q);
+
+      const countries = await service.countries();
+
+      expect(q.select).toHaveBeenCalledWith('code name');
+      expect(q.sort).toHaveBeenCalledWith({ name: 1 });
+      expect(countries).toEqual([{ id: egypt._id.toString(), code: 'EG', name: 'Egypt' }]);
+    });
+  });
+
   describe('refresh (ACC-06)', () => {
     it('does not refresh a session while a password change is required', async () => {
       refreshTokenModel.findOneAndDelete.mockReturnValue(query({ userId, expiresAt: new Date(Date.now() + 60_000) }));
@@ -462,6 +479,44 @@ describe('AuthService', () => {
       });
       await service.verifyEmail({ token });
       expect(userModel.updateOne).toHaveBeenCalledWith({ _id: userId.toString() }, { $set: { isVerified: true } });
+    });
+  });
+
+  describe('resendVerification (ACC-02)', () => {
+    const GENERIC = 'If that account exists and is not verified yet, a new verification link has been sent.';
+    const resend = (now?: number) => service.resendVerification({ emailAddress: ' Test@Example.com ' }, now);
+
+    it('emails a new verification link to an unverified account', async () => {
+      userModel.findOne.mockReturnValue(query(userRecord({ isVerified: false })));
+
+      await expect(resend()).resolves.toEqual({ message: GENERIC });
+
+      expect(userModel.findOne).toHaveBeenCalledWith({ emailAddress: 'test@example.com' });
+      expect(sentEmail().to).toBe('test@example.com');
+      expect(sentEmail().text).toContain('http://localhost:3001/verify-email?token=');
+    });
+
+    it.each([
+      ['unknown', null],
+      ['already verified', { isVerified: true }],
+      ['suspended', { isVerified: false, status: UserActivityStatus.SUSPENDED }],
+    ])('sends nothing for an %s account but answers the same', async (_label, overrides) => {
+      userModel.findOne.mockReturnValue(query(overrides ? userRecord(overrides) : null));
+
+      await expect(resend()).resolves.toEqual({ message: GENERIC });
+      expect(mailService.send).not.toHaveBeenCalled();
+    });
+
+    it('sends at most one link per minute per account', async () => {
+      userModel.findOne.mockReturnValue(query(userRecord({ isVerified: false })));
+      const start = 1_000_000;
+
+      await resend(start);
+      await resend(start + 30_000);
+      expect(mailService.send).toHaveBeenCalledTimes(1);
+
+      await resend(start + 60_000);
+      expect(mailService.send).toHaveBeenCalledTimes(2);
     });
   });
 });

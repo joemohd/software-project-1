@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fly — Booking and payment</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1F55D6}a:hover{color:#163F9F}
+input:focus{outline:none;border-color:#1F55D6 !important;box-shadow:0 0 0 3px rgba(31,85,214,.18)}
+button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; position: relative; isolation: isolate; overflow: hidden; background: #F4F6FA; font-family: Inter, system-ui, sans-serif; color: #0B1B33;">
+
+  <header style="background: #FFFFFF; border-bottom: 1px solid #DDE3EC;">
+    <div style="max-width: 1280px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+      <a href="Main.dc.html" style="display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; text-decoration: none; min-height: 44px;">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"></path></svg>
+        Back to results
+      </a>
+      <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700;">Fly</span>
+      <span style="display: flex; align-items: center; gap: 8px; font-size: 14px; color: #4A5568;">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+        Secure checkout
+      </span>
+    </div>
+  </header>
+
+  <div style="background: #FFF4E5; border-bottom: 1px solid #F5CB8F;">
+    <div role="timer" aria-live="off" style="max-width: 1280px; margin: 0 auto; padding: 12px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 14px; color: #7A4100;">
+      <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+      <span>Your seats are held for <strong style="font-variant-numeric: tabular-nums;">{{ clock }}</strong>. Complete payment before the hold expires, or the seats are released.</span>
+    </div>
+  </div>
+
+  <section style="position: relative; isolation: isolate; overflow: hidden; background: #0B1B33; color: #FFFFFF;">
+    <img src="/_blob/693c7590708a3076214d0af61b275871" alt="" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 33%;">
+    <div aria-hidden="true" style="position: absolute; z-index: -1; left: 0; top: 0; width: 100%; height: 100%; background: rgba(11,27,51,0.3);"></div>
+    <div style="max-width: 1280px; margin: 0 auto; padding: 56px 24px; display: flex; flex-direction: column; gap: 6px;">
+      <p style="margin: 0; font-size: 13px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: #C9D8FF;">Complete your booking</p>
+      <p style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 36px; font-weight: 600; letter-spacing: -0.02em;">Cairo → Dubai</p>
+      <p style="margin: 0; font-size: 15px; color: #DCE4F2;">Meridian Air MR 218 · Fri 18 Dec · 3 passengers</p>
+    </div>
+    <span style="position: absolute; right: 16px; bottom: 10px; font-size: 11px; color: rgba(255,255,255,0.8);">Photo: Bill Abbott, CC BY-SA 2.0, via Wikimedia Commons</span>
+  </section>
+
+  <div style="max-width: 1280px; margin: 0 auto; padding: 32px 24px 64px; display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start;">
+    <main style="flex: 999 1 600px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
+      <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 600;">Passengers &amp; baggage</h1>
+
+      <sc-for list="{{ pax }}" as="p" hint-placeholder-count="3">
+        <section style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 20px 24px; display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+            <h2 style="margin: 0; font-size: 16px; font-weight: 600;">Passenger {{ p.n }}</h2>
+            <span style="padding: 4px 10px; border-radius: 999px; background: #E6EEFF; color: #163F9F; font-size: 12px; font-weight: 600;">{{ p.type }}</span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 13px; font-weight: 500;">Full name</label>
+              <input value="{{ p.name }}" style="height: 44px; padding: 0 12px; border: 1px solid #C9D1DE; border-radius: 8px; font: inherit; font-size: 14px; box-sizing: border-box;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 13px; font-weight: 500;">Date of birth</label>
+              <input type="date" value="{{ p.dob }}" style="height: 44px; padding: 0 12px; border: 1px solid #C9D1DE; border-radius: 8px; font: inherit; font-size: 14px; box-sizing: border-box;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 13px; font-weight: 500;">Passport / ID number</label>
+              <input value="{{ p.passport }}" style="height: 44px; padding: 0 12px; border: 1px solid #C9D1DE; border-radius: 8px; font: inherit; font-size: 14px; box-sizing: border-box;">
+            </div>
+          </div>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid #EEF1F6;">
+            <div>
+              <div style="font-size: 14px; font-weight: 500;">Extra bags</div>
+              <div style="font-size: 13px; color: #5A6578;">$45 each · up to 23 kg · max 2 per passenger</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <button type="button" onClick="{{ p.dec }}" aria-label="Remove a bag" style="width: 44px; height: 44px; border: 1px solid #C9D1DE; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 18px; cursor: pointer; color: #0B1B33;">−</button>
+              <span style="width: 36px; text-align: center; font-size: 16px; font-weight: 600;">{{ p.bags }}</span>
+              <button type="button" onClick="{{ p.inc }}" aria-label="Add a bag" style="width: 44px; height: 44px; border: 1px solid #C9D1DE; border-radius: 10px; background: #FFFFFF; font: inherit; font-size: 18px; cursor: pointer; color: #0B1B33;">+</button>
+            </div>
+          </div>
+        </section>
+      </sc-for>
+
+      <section style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 600;">Meridian Air policies</h2>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px;">
+          <div>
+            <h3 style="margin: 0 0 8px; font-size: 14px; font-weight: 600;">Cancellation refunds</h3>
+            <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+              <tbody>
+                <tr><td style="padding: 6px 0; color: #4A5568;">14+ days before departure</td><td style="padding: 6px 0; text-align: right; font-weight: 600;">90%</td></tr>
+                <tr><td style="padding: 6px 0; color: #4A5568; border-top: 1px solid #EEF1F6;">3–13 days before</td><td style="padding: 6px 0; text-align: right; font-weight: 600; border-top: 1px solid #EEF1F6;">50%</td></tr>
+                <tr><td style="padding: 6px 0; color: #4A5568; border-top: 1px solid #EEF1F6;">Less than 3 days</td><td style="padding: 6px 0; text-align: right; font-weight: 600; border-top: 1px solid #EEF1F6;">0%</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3 style="margin: 0 0 8px; font-size: 14px; font-weight: 600;">Baggage</h3>
+            <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #4A5568;">Economy includes 1 checked bag up to 23 kg per adult and child. Infants travel without a seat or checked allowance.</p>
+          </div>
+        </div>
+        <label style="display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border-radius: 10px; background: #F4F6FA; font-size: 14px; line-height: 1.5; cursor: pointer;">
+          <input type="checkbox" checked="{{ accepted }}" onChange="{{ toggleAccept }}" style="width: 18px; height: 18px; margin: 2px 0 0; accent-color: #1F55D6; flex: none;">
+          <span>I've read and accept Meridian Air's cancellation and baggage policies.</span>
+        </label>
+      </section>
+    </main>
+
+    <aside style="flex: 1 1 340px; max-width: 100%; background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 24px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px;">
+      <h2 style="margin: 0; font-size: 18px; font-weight: 600;">Booking summary</h2>
+      <div style="padding: 14px; border-radius: 10px; background: #F4F6FA; display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; justify-content: space-between; font-size: 13px; color: #4A5568;"><span>Meridian Air · MR 218</span><span>Economy</span></div>
+        <div style="display: flex; align-items: center; gap: 10px; font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 600;">CAI 21:30 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"></path></svg> DXB 01:55</div>
+        <div style="font-size: 13px; color: #4A5568;">Fri 18 Dec · arrives Sat 19 Dec · 3h 25m</div>
+      </div>
+      <dl style="margin: 0; display: flex; flex-direction: column; gap: 10px; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between;"><dt style="color: #4A5568;">2 adults × $254</dt><dd style="margin: 0;">$508</dd></div>
+        <div style="display: flex; justify-content: space-between;"><dt style="color: #4A5568;">1 child × $254</dt><dd style="margin: 0;">$254</dd></div>
+        <div style="display: flex; justify-content: space-between;"><dt style="color: #4A5568;">Extra bags × {{ bagCount }}</dt><dd style="margin: 0;">${{ bagTotal }}</dd></div>
+        <div style="display: flex; justify-content: space-between; padding-top: 12px; border-top: 1px solid #DDE3EC; font-size: 18px; font-weight: 700;"><dt>Total (USD)</dt><dd style="margin: 0;">${{ total }}</dd></div>
+      </dl>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <span style="font-size: 13px; font-weight: 500;">Card details</span>
+        <div aria-label="Card details, secured by Stripe" style="height: 48px; padding: 0 14px; border: 1px solid #C9D1DE; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 14px; color: #5A6578;">
+          <span>Card number</span><span>MM / YY  CVC</span>
+        </div>
+        <span style="font-size: 12px; color: #5A6578;">Payments are processed by Stripe. Fly never stores your card.</span>
+      </div>
+      <button type="button" disabled="{{ blocked }}" style="{{ payStyle }}">Pay ${{ total }}</button>
+      <sc-if value="{{ blocked }}" hint-placeholder-val="{{ true }}">
+        <p style="margin: -6px 0 0; font-size: 13px; color: #4A5568; text-align: center;">Accept the airline policies to continue.</p>
+      </sc-if>
+    </aside>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1390}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { bags: [1, 0, 0], accepted: false, left: 574 };
+  }
+  componentDidMount() {
+    this.timer = setInterval(() => this.setState({ left: Math.max(0, this.state.left - 1) }), 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); }
+  renderVals() {
+    const people = [
+      { name: 'Laila Hassan', dob: '1990-04-12', passport: 'A12345678', type: 'Adult' },
+      { name: 'Omar Hassan', dob: '1988-09-03', passport: 'A87654321', type: 'Adult' },
+      { name: 'Nour Hassan', dob: '2017-06-21', passport: 'A11223344', type: 'Child' }
+    ];
+    const setBag = (i, d) => {
+      const bags = this.state.bags.slice();
+      bags[i] = Math.min(2, Math.max(0, bags[i] + d));
+      this.setState({ bags });
+    };
+    const pax = people.map((p, i) => ({ ...p, n: i + 1, bags: this.state.bags[i], inc: () => setBag(i, 1), dec: () => setBag(i, -1) }));
+    const bagCount = this.state.bags.reduce((a, b) => a + b, 0);
+    const bagTotal = bagCount * 45;
+    const total = 762 + bagTotal;
+    const l = this.state.left;
+    const clock = Math.floor(l / 60) + ':' + String(l % 60).padStart(2, '0');
+    const blocked = !this.state.accepted;
+    return {
+      pax, bagCount, bagTotal, total, clock, blocked,
+      accepted: this.state.accepted,
+      toggleAccept: () => this.setState({ accepted: !this.state.accepted }),
+      payStyle: 'height: 52px; border: 0; border-radius: 10px; font: inherit; font-size: 16px; font-weight: 600; ' + (blocked ? 'background: #D5DBE5; color: #4A5568; cursor: not-allowed;' : 'background: #1F55D6; color: #FFFFFF; cursor: pointer;')
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fly — Airline moderator</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#1F55D6}a:hover{color:#163F9F}
+button:focus-visible,a:focus-visible{outline:2px solid #1F55D6;outline-offset:2px}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-wrap: wrap; background: #F4F6FA; font-family: Inter, system-ui, sans-serif; color: #0B1B33;">
+
+  <aside style="flex: 1 1 240px; max-width: 100%; background: #0B1B33; color: #FFFFFF; padding: 24px 16px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 0 8px;">
+      <span style="width: 32px; height: 32px; border-radius: 8px; background: #1F55D6; display: flex; align-items: center; justify-content: center;"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg></span>
+      <span style="font-family: 'Space Grotesk', sans-serif; font-size: 22px; font-weight: 700;">Fly</span>
+      <span style="margin-left: auto; padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,0.1); font-size: 11px; font-weight: 600; color: #C3CEE0;">Moderator</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 12px; background: rgba(255,255,255,0.06);">
+      <span style="width: 40px; height: 40px; border-radius: 10px; background: #FFFFFF; color: #1F55D6; display: flex; align-items: center; justify-content: center; font-weight: 700;">MR</span>
+      <div><div style="font-size: 15px; font-weight: 600;">Meridian Air</div><div style="font-size: 12px; color: #C3CEE0;">Code MR</div></div>
+    </div>
+    <nav aria-label="Airline" style="display: flex; flex-direction: column; gap: 2px;">
+      <a href="#" aria-current="page" style="padding: 12px; border-radius: 8px; background: rgba(255,255,255,0.12); color: #FFFFFF; text-decoration: none; font-size: 14px; font-weight: 600;">Flights</a>
+      <a href="#" style="padding: 12px; border-radius: 8px; color: #C3CEE0; text-decoration: none; font-size: 14px;">Bookings &amp; passengers</a>
+      <a href="#" style="padding: 12px; border-radius: 8px; color: #C3CEE0; text-decoration: none; font-size: 14px;">Baggage rules</a>
+      <a href="#" style="padding: 12px; border-radius: 8px; color: #C3CEE0; text-decoration: none; font-size: 14px;">Cancellation tiers</a>
+      <a href="#" style="padding: 12px; border-radius: 8px; color: #C3CEE0; text-decoration: none; font-size: 14px;">Airline profile</a>
+    </nav>
+  </aside>
+
+  <main style="flex: 999 1 640px; min-width: 0; padding: 32px; box-sizing: border-box; display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+      <div>
+        <h1 style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 30px; font-weight: 600;">Flights</h1>
+        <p style="margin: 4px 0 0; font-size: 14px; color: #4A5568;">Times are local to each airport.</p>
+      </div>
+      <button type="button" style="height: 44px; padding: 0 18px; border: 0; border-radius: 10px; background: #1F55D6; color: #FFFFFF; font: inherit; font-size: 14px; font-weight: 600;">+ New flight</button>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px;">
+      <div style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 18px;"><div style="font-size: 13px; color: #4A5568;">Scheduled</div><div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700;">[COUNT]</div></div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 18px;"><div style="font-size: 13px; color: #4A5568;">Departed</div><div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700;">[COUNT]</div></div>
+      <div style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 18px;"><div style="font-size: 13px; color: #4A5568;">Cancelled</div><div style="font-family: 'Space Grotesk', sans-serif; font-size: 28px; font-weight: 700;">[COUNT]</div></div>
+    </div>
+
+    <div style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; overflow-x: auto;">
+      <table style="width: 100%; min-width: 820px; border-collapse: collapse; font-size: 14px;">
+        <thead>
+          <tr style="text-align: left; color: #4A5568; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;">
+            <th scope="col" style="padding: 14px 20px; font-weight: 600;">Flight</th>
+            <th scope="col" style="padding: 14px 12px; font-weight: 600;">Route</th>
+            <th scope="col" style="padding: 14px 12px; font-weight: 600;">Departs (local)</th>
+            <th scope="col" style="padding: 14px 12px; font-weight: 600;">Seats left</th>
+            <th scope="col" style="padding: 14px 12px; font-weight: 600;">Status</th>
+            <th scope="col" style="padding: 14px 20px; font-weight: 600; text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-top: 1px solid #EEF1F6;">
+            <td style="padding: 16px 20px; font-weight: 600;">MR 214</td>
+            <td style="padding: 16px 12px;">CAI → DXB</td>
+            <td style="padding: 16px 12px;">18 Dec, 08:15</td>
+            <td style="padding: 16px 12px;"><span style="color: #B42318; font-weight: 600;">Eco 4</span> · Bus 6</td>
+            <td style="padding: 16px 12px;"><span style="padding: 3px 10px; border-radius: 999px; background: #E3F4EA; color: #1B5E36; font-size: 12px; font-weight: 600;">Scheduled</span></td>
+            <td style="padding: 16px 20px; text-align: right; white-space: nowrap;"><a href="#" style="font-weight: 600; text-decoration: none; margin-right: 16px;">Bookings</a><a href="#" style="font-weight: 600; text-decoration: none; margin-right: 16px;">Edit</a><button type="button" style="border: 0; background: none; color: #B42318; font: inherit; font-weight: 600; cursor: pointer; padding: 8px 0;">Cancel</button></td>
+          </tr>
+          <tr style="border-top: 1px solid #EEF1F6; background: #F7F9FD;">
+            <td style="padding: 16px 20px; font-weight: 600;">MR 218</td>
+            <td style="padding: 16px 12px;">CAI → DXB</td>
+            <td style="padding: 16px 12px;">18 Dec, 21:30</td>
+            <td style="padding: 16px 12px;">Eco 9 · Bus 12</td>
+            <td style="padding: 16px 12px;"><span style="padding: 3px 10px; border-radius: 999px; background: #E3F4EA; color: #1B5E36; font-size: 12px; font-weight: 600;">Scheduled</span></td>
+            <td style="padding: 16px 20px; text-align: right; white-space: nowrap;"><a href="#" style="font-weight: 600; text-decoration: none; margin-right: 16px;">Bookings</a><a href="#" style="font-weight: 600; text-decoration: none; margin-right: 16px;">Edit</a><button type="button" style="border: 0; background: none; color: #B42318; font: inherit; font-weight: 600; cursor: pointer; padding: 8px 0;">Cancel</button></td>
+          </tr>
+          <tr style="border-top: 1px solid #EEF1F6;">
+            <td style="padding: 16px 20px; font-weight: 600;">MR 305</td>
+            <td style="padding: 16px 12px;">DXB → CAI</td>
+            <td style="padding: 16px 12px;">26 Dec, 10:40</td>
+            <td style="padding: 16px 12px;">Eco 61 · Prem 14 · Bus 20</td>
+            <td style="padding: 16px 12px;"><span style="padding: 3px 10px; border-radius: 999px; background: #E3F4EA; color: #1B5E36; font-size: 12px; font-weight: 600;">Scheduled</span></td>
+            <td style="padding: 16px 20px; text-align: right; white-space: nowrap;"><a href="#" style="font-weight: 600; text-decoration: none; margin-right: 16px;">Bookings</a><a href="#" style="font-weight: 600; text-decoration: none; margin-right: 16px;">Edit</a><button type="button" style="border: 0; background: none; color: #B42318; font: inherit; font-weight: 600; cursor: pointer; padding: 8px 0;">Cancel</button></td>
+          </tr>
+          <tr style="border-top: 1px solid #EEF1F6; color: #5A6578;">
+            <td style="padding: 16px 20px; font-weight: 600;">MR 120</td>
+            <td style="padding: 16px 12px;">CAI → IST</td>
+            <td style="padding: 16px 12px;">20 Nov, 07:00</td>
+            <td style="padding: 16px 12px;">—</td>
+            <td style="padding: 16px 12px;"><span style="padding: 3px 10px; border-radius: 999px; background: #E6EAF2; color: #2D3748; font-size: 12px; font-weight: 600;">Departed</span></td>
+            <td style="padding: 16px 20px; text-align: right;"><a href="#" style="font-weight: 600; text-decoration: none;">Bookings</a></td>
+          </tr>
+          <tr style="border-top: 1px solid #EEF1F6; color: #5A6578;">
+            <td style="padding: 16px 20px; font-weight: 600;">MR 132</td>
+            <td style="padding: 16px 12px;">CAI → AMM</td>
+            <td style="padding: 16px 12px;">2 Dec, 13:20</td>
+            <td style="padding: 16px 12px;">—</td>
+            <td style="padding: 16px 12px;"><span style="padding: 3px 10px; border-radius: 999px; background: #FDECEC; color: #8A1C1C; font-size: 12px; font-weight: 600;">Cancelled</span></td>
+            <td style="padding: 16px 20px; text-align: right;"><a href="#" style="font-weight: 600; text-decoration: none;">Bookings</a></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <section style="background: #FFFFFF; border: 1px solid #DDE3EC; border-radius: 14px; padding: 20px 24px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+        <h2 style="margin: 0; font-size: 17px; font-weight: 600;">MR 218 · bookings</h2>
+        <button type="button" style="height: 40px; padding: 0 14px; border: 1px solid #C9D1DE; border-radius: 8px; background: #FFFFFF; color: #0B1B33; font: inherit; font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"></path></svg>
+          Export passenger list (CSV)
+        </button>
+      </div>
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; min-width: 600px; border-collapse: collapse; font-size: 14px;">
+          <thead><tr style="text-align: left; color: #4A5568; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em;"><th scope="col" style="padding: 8px 0; font-weight: 600;">Reference</th><th scope="col" style="padding: 8px 12px; font-weight: 600;">Passengers</th><th scope="col" style="padding: 8px 12px; font-weight: 600;">Cabin</th><th scope="col" style="padding: 8px 12px; font-weight: 600;">Seats</th><th scope="col" style="padding: 8px 0; font-weight: 600;">Status</th></tr></thead>
+          <tbody>
+            <tr style="border-top: 1px solid #EEF1F6;"><td style="padding: 12px 0; font-weight: 600;">FLY7K2Q9</td><td style="padding: 12px;">Laila Hassan, Omar Hassan, Nour Hassan</td><td style="padding: 12px;">Economy</td><td style="padding: 12px;">3</td><td style="padding: 12px 0;"><span style="padding: 3px 10px; border-radius: 999px; background: #E3F4EA; color: #1B5E36; font-size: 12px; font-weight: 600;">Confirmed</span></td></tr>
+            <tr style="border-top: 1px solid #EEF1F6;"><td style="padding: 12px 0; font-weight: 600;">FLY3D9W1</td><td style="padding: 12px;">Karim Adel</td><td style="padding: 12px;">Business</td><td style="padding: 12px;">1</td><td style="padding: 12px 0;"><span style="padding: 3px 10px; border-radius: 999px; background: #FDECEC; color: #8A1C1C; font-size: 12px; font-weight: 600;">Cancelled</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":960}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

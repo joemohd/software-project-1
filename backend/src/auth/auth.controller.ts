@@ -21,6 +21,7 @@ import { Cookie } from './decorators/cookie.decorator.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import { Public } from './decorators/public.decorator.js';
 import {
+  CountryOptionDto,
   LoginResponseDto,
   MessageResponseDto,
   RegisterResponseDto,
@@ -30,6 +31,7 @@ import { ChangePasswordDto } from './dto/change-password.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { ResendVerificationDto } from './dto/resend-verification.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { VerifyEmailQueryDto } from './dto/verify-email.dto.js';
 
@@ -53,6 +55,15 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  // GET /api/auth/countries (ACC-01) - fills the country dropdown on the register form
+  @Public()
+  @Get('countries')
+  @ApiOperation({ summary: 'List the countries a new account can choose as country of origin (ACC-01)' })
+  @ApiOkResponse({ type: CountryOptionDto, isArray: true })
+  countries(): Promise<CountryOptionDto[]> {
+    return this.authService.countries();
+  }
+
   // GET /api/auth/verify-email?token=... (ACC-02, optional)
   @Public()
   @Get('verify-email')
@@ -61,6 +72,19 @@ export class AuthController {
   @ApiBadRequestResponse({ description: 'Link invalid or expired' })
   verifyEmail(@Query() query: VerifyEmailQueryDto): Promise<MessageResponseDto> {
     return this.authService.verifyEmail(query);
+  }
+
+  // POST /api/auth/resend-verification (ACC-02) - "Resend email" on the frontend
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Email a new verification link (ACC-02)',
+    description: 'Always returns the same message. Sends at most one link per account per minute, and only to unverified, active accounts.',
+  })
+  @ApiOkResponse({ type: MessageResponseDto })
+  resendVerification(@Body() dto: ResendVerificationDto): Promise<MessageResponseDto> {
+    return this.authService.resendVerification(dto);
   }
 
   // POST /api/auth/login (ACC-04, ACC-05) - sets the auth cookies
